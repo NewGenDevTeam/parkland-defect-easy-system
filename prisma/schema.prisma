@@ -1,0 +1,124 @@
+// Parkland Defect Easy System — simple floor-plan based defect tracking.
+// Docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  MAIN_CON
+  SUB_CON
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ProjectStatus {
+  ACTIVE
+  COMPLETED
+}
+
+enum DefectStatus {
+  NEW // created by main-con, no sub-con assigned yet
+  ASSIGNED // assigned to a sub-con
+  IN_PROGRESS // sub-con is working on it
+  COMPLETED // sub-con marked done, waiting for review
+  CLOSED // main-con verified and closed
+  REOPENED // main-con rejected the fix, sent back to sub-con
+}
+
+enum PhotoType {
+  DEFECT // photo of the problem (uploaded by main-con)
+  COMPLETION // proof of fix (uploaded by sub-con)
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role
+  createdAt    DateTime @default(now())
+
+  ownedProjects   Project[] @relation("ProjectOwner")
+  assignedDefects Defect[]  @relation("AssignedSubCon")
+  createdDefects  Defect[]  @relation("DefectCreator")
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  name        String
+  location    String?
+  description String?
+  status      ProjectStatus @default(ACTIVE)
+  createdAt   DateTime      @default(now())
+
+  ownerId String
+  owner   User   @relation("ProjectOwner", fields: [ownerId], references: [id])
+
+  drawings Drawing[]
+  defects  Defect[]
+}
+
+model Drawing {
+  id        String   @id @default(cuid())
+  name      String
+  imageUrl  String
+  createdAt DateTime @default(now())
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  defects Defect[]
+}
+
+model Defect {
+  id          String       @id @default(cuid())
+  title       String
+  description String?
+  trade       String? // trade / category, e.g. Plumbing, Electrical
+  priority    Priority     @default(MEDIUM)
+  status      DefectStatus @default(NEW)
+  reopenReason String? // short note from main-con when a fix is reopened
+  x           Float // horizontal pin position on the drawing (0-1 ratio)
+  y           Float // vertical pin position on the drawing (0-1 ratio)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  drawingId String
+  drawing   Drawing @relation(fields: [drawingId], references: [id], onDelete: Cascade)
+
+  createdById String
+  createdBy   User   @relation("DefectCreator", fields: [createdById], references: [id])
+
+  assignedToId String?
+  assignedTo   User?   @relation("AssignedSubCon", fields: [assignedToId], references: [id])
+
+  photos Photo[]
+
+  @@index([projectId])
+  @@index([assignedToId])
+}
+
+model Photo {
+  id        String    @id @default(cuid())
+  url       String
+  type      PhotoType @default(DEFECT)
+  createdAt DateTime  @default(now())
+
+  defectId String
+  defect   Defect @relation(fields: [defectId], references: [id], onDelete: Cascade)
+
+  @@index([defectId])
+}
