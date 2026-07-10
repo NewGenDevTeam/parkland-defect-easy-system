@@ -91,14 +91,14 @@ export default async function SubDefectDetailPage({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Defect photos</CardTitle>
+          <CardTitle className="text-base">Defect Photos</CardTitle>
         </CardHeader>
         <CardContent>
           {defectPhotos.length > 0 ? (
             <PhotoGrid photos={defectPhotos} />
           ) : (
             <p className="text-sm text-muted-foreground">
-              No defect photos yet.
+              No Defect Photos yet.
             </p>
           )}
         </CardContent>
@@ -106,33 +106,41 @@ export default async function SubDefectDetailPage({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Location on floor plan</CardTitle>
+          <CardTitle className="text-base">Location on Floor Plan</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-2">
           {defect.drawing ? (
-            <div className="relative w-full overflow-hidden rounded-xl border bg-muted/30">
-              <Image
-                src={defect.drawing.imageUrl}
-                alt="Floor plan"
-                width={1600}
-                height={1200}
-                className="h-auto w-full"
-                unoptimized
-              />
-              <span
-                style={{ left: `${defect.x * 100}%`, top: `${defect.y * 100}%` }}
-                className="absolute -translate-x-1/2 -translate-y-full"
-              >
+            <>
+              <div className="relative w-full overflow-hidden rounded-xl border bg-muted/30">
+                <Image
+                  src={defect.drawing.imageUrl}
+                  alt="Floor plan"
+                  width={1600}
+                  height={1200}
+                  className="h-auto w-full"
+                  unoptimized
+                />
                 <span
-                  className={`flex h-6 w-6 items-center justify-center rounded-full border-2 border-white text-white shadow-md ${STATUS_PIN_COLOR[status]}`}
+                  style={{ left: `${defect.x * 100}%`, top: `${defect.y * 100}%` }}
+                  className="absolute block h-7 w-7 -translate-x-1/2 -translate-y-1/2"
                 >
-                  <MapPin className="h-3.5 w-3.5" />
+                  <span
+                    className={`absolute inset-0 animate-ping rounded-full opacity-60 ${STATUS_PIN_COLOR[status]}`}
+                  />
+                  <span
+                    className={`relative flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-white shadow-md ring-1 ring-black/20 ${STATUS_PIN_COLOR[status]}`}
+                  >
+                    <MapPin className="h-4 w-4" />
+                  </span>
                 </span>
-              </span>
-            </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                The pin marks where this Defect is on the Floor Plan.
+              </p>
+            </>
           ) : (
             <p className="text-sm text-muted-foreground">
-              No floor plan available.
+              No Floor Plan available.
             </p>
           )}
         </CardContent>

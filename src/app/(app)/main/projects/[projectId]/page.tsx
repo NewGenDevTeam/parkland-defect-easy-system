@@ -10,11 +10,14 @@ import type { DefectStatusValue, PriorityValue } from "@/lib/defect-ui";
 
 export default async function ProjectDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ projectId: string }>;
+  searchParams: Promise<{ defectId?: string }>;
 }) {
   const user = await requireRole("MAIN_CON");
   const { projectId } = await params;
+  const { defectId } = await searchParams;
 
   const project = await prisma.project.findFirst({
     where: { id: projectId, ownerId: user.userId },
@@ -40,8 +43,16 @@ export default async function ProjectDetailPage({
 
   const drawing = project.drawings[0] ?? null;
 
+  // Stable pin numbers: 1, 2, 3… in creation order, regardless of list order.
+  const pinNumberById = new Map(
+    [...project.defects]
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .map((d, i) => [d.id, i + 1]),
+  );
+
   const defects: BoardDefect[] = project.defects.map((d) => ({
     id: d.id,
+    pinNumber: pinNumberById.get(d.id) ?? 0,
     title: d.title,
     description: d.description,
     trade: d.trade,
@@ -97,7 +108,7 @@ export default async function ProjectDetailPage({
       <Card>
         <CardHeader>
           <CardTitle className="text-base">
-            Floor plan &amp; defects ({defects.length})
+            Floor Plan &amp; Defects ({defects.length})
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -106,6 +117,11 @@ export default async function ProjectDetailPage({
             drawing={drawing ? { id: drawing.id, imageUrl: drawing.imageUrl } : null}
             defects={defects}
             subCons={subCons}
+            initialDefectId={
+              defectId && defects.some((d) => d.id === defectId)
+                ? defectId
+                : null
+            }
           />
         </CardContent>
       </Card>

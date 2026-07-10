@@ -23,10 +23,10 @@ export default function LoginPage() {
               <Building2 className="h-6 w-6" />
             </div>
             <h1 className="text-xl font-semibold tracking-tight">
-              Parkland Defect System
+              Parkland Defect
             </h1>
             <p className="text-sm text-muted-foreground">
-              Floor-plan based defect management
+              Floor Plan Defect Management
             </p>
           </div>
 
@@ -41,13 +41,6 @@ export default function LoginPage() {
               <LoginForm />
             </CardContent>
           </Card>
-
-          <div className="rounded-lg border bg-background p-3 text-xs text-muted-foreground">
-            <p className="mb-1 font-medium text-foreground">Demo accounts</p>
-            <p>Main-Con: maincon@parkland.com</p>
-            <p>Sub-Con: subcon@parkland.com</p>
-            <p>Password: Demo@123456</p>
-          </div>
         </div>
       </main>
     </div>

@@ -80,12 +80,13 @@ export function CompletionPanel({
           <PhotoGrid photos={completionPhotos} />
         ) : (
           <p className="text-sm text-muted-foreground">
-            No completion photos yet.
+            No Completion Photos yet.
           </p>
         )}
 
         {canUpload && (
           <form onSubmit={submitPhoto} className="flex flex-col gap-2">
+            <p className="text-sm font-medium">Take or upload completion photo</p>
             {/* capture="environment" opens the rear camera on mobile devices */}
             <Input
               type="file"
@@ -102,7 +103,7 @@ export function CompletionPanel({
               ) : (
                 <Camera className="h-4 w-4" />
               )}
-              Add completion photo
+              Add Completion Photo
             </Button>
           </form>
         )}
@@ -128,24 +129,32 @@ export function CompletionPanel({
       )}
 
       {(status === "IN_PROGRESS" || status === "REOPENED") && (
-        <Button
-          className="w-full"
-          size="lg"
-          disabled={pending}
-          onClick={() => runAction(() => markCompleted(defectId))}
-        >
-          {pending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <CheckCircle2 className="h-4 w-4" />
+        <div className="space-y-2">
+          {completionPhotos.length === 0 && (
+            <p className="text-xs text-muted-foreground">
+              Upload at least one Completion Photo before marking this Defect
+              completed.
+            </p>
           )}
-          Mark Completed
-        </Button>
+          <Button
+            className="w-full"
+            size="lg"
+            disabled={pending}
+            onClick={() => runAction(() => markCompleted(defectId))}
+          >
+            {pending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <CheckCircle2 className="h-4 w-4" />
+            )}
+            Mark Completed
+          </Button>
+        </div>
       )}
 
       {status === "COMPLETED" && (
         <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-          Marked as completed. Waiting for the main contractor to review.
+          Marked as completed. Waiting for the Main-Con to review.
         </p>
       )}
 

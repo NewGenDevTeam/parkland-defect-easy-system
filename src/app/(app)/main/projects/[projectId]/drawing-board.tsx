@@ -3,7 +3,7 @@
 import { useActionState, useRef, useState, useTransition } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ImageUp, ImagePlus, Loader2, MapPin, Plus } from "lucide-react";
+import { ImageUp, ImagePlus, Loader2, Plus, UserRound } from "lucide-react";
 import {
   createDefect,
   updateDefect,
@@ -39,6 +39,7 @@ import {
 
 export type BoardDefect = {
   id: string;
+  pinNumber: number;
   title: string;
   description: string | null;
   trade: string | null;
@@ -66,11 +67,13 @@ export function DrawingBoard({
   drawing,
   defects,
   subCons,
+  initialDefectId = null,
 }: {
   projectId: string;
   drawing: { id: string; imageUrl: string } | null;
   defects: BoardDefect[];
   subCons: SubCon[];
+  initialDefectId?: string | null;
 }) {
   if (!drawing) {
     return <UploadDrawing projectId={projectId} />;
@@ -81,6 +84,7 @@ export function DrawingBoard({
       drawing={drawing}
       defects={defects}
       subCons={subCons}
+      initialDefectId={initialDefectId}
     />
   );
 }
@@ -112,9 +116,9 @@ function UploadDrawing({ projectId }: { projectId: string }) {
     <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed p-10 text-center">
       <ImageUp className="h-10 w-10 text-muted-foreground" />
       <div>
-        <p className="font-medium">No floor plan yet</p>
+        <p className="font-medium">No Floor Plan yet</p>
         <p className="text-sm text-muted-foreground">
-          Upload a floor plan / drawing image to start placing defect pins.
+          Upload a Floor Plan to start adding Defect pins.
         </p>
       </div>
       <form
@@ -138,7 +142,7 @@ function UploadDrawing({ projectId }: { projectId: string }) {
         )}
         <Button type="submit" disabled={pending}>
           {pending && <Loader2 className="h-4 w-4 animate-spin" />}
-          Upload floor plan
+          Upload Floor Plan
         </Button>
       </form>
     </div>
@@ -152,11 +156,13 @@ function Board({
   drawing,
   defects,
   subCons,
+  initialDefectId,
 }: {
   projectId: string;
   drawing: { id: string; imageUrl: string };
   defects: BoardDefect[];
   subCons: SubCon[];
+  initialDefectId: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -165,7 +171,8 @@ function Board({
   );
   // Store the id, not the object, so the open dialog reflects fresh server data
   // (new photos, status changes) after router.refresh().
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Seeded from ?defectId= so links from /main/defects open the pin directly.
+  const [selectedId, setSelectedId] = useState<string | null>(initialDefectId);
   const selected = defects.find((d) => d.id === selectedId) ?? null;
   const [reopenReason, setReopenReason] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -285,7 +292,8 @@ function Board({
     <div className="space-y-3">
       <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
         <Plus className="h-4 w-4" />
-        Tap anywhere on the drawing to add a defect pin.
+        Click on the drawing to add a defect pin. Click a pin to open the
+        defect.
       </p>
 
       <div
@@ -307,7 +315,7 @@ function Board({
           <button
             key={d.id}
             type="button"
-            title={d.title}
+            title={`#${d.pinNumber} ${d.title}`}
             onClick={(e) => {
               e.stopPropagation();
               setError(null);
@@ -315,14 +323,12 @@ function Board({
               setSelectedId(d.id);
             }}
             style={{ left: `${d.x * 100}%`, top: `${d.y * 100}%` }}
-            className="absolute -translate-x-1/2 -translate-y-full focus:outline-none"
+            className="absolute -translate-x-1/2 -translate-y-1/2 focus:outline-none"
           >
-            <span className="flex flex-col items-center">
-              <span
-                className={`flex h-6 w-6 items-center justify-center rounded-full border-2 border-white text-[10px] font-bold text-white shadow-md ${STATUS_PIN_COLOR[d.status]}`}
-              >
-                <MapPin className="h-3.5 w-3.5" />
-              </span>
+            <span
+              className={`flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-xs font-bold text-white shadow-md ring-1 ring-black/20 ${STATUS_PIN_COLOR[d.status]}`}
+            >
+              {d.pinNumber}
             </span>
           </button>
         ))}
@@ -401,7 +407,9 @@ function Board({
           {selected && (
             <>
               <DialogHeader>
-                <DialogTitle>{selected.title}</DialogTitle>
+                <DialogTitle>
+                  #{selected.pinNumber} {selected.title}
+                </DialogTitle>
                 <DialogDescription>
                   Created {new Date(selected.createdAt).toLocaleDateString()}
                 </DialogDescription>
@@ -417,6 +425,12 @@ function Board({
                   </Badge>
                   {selected.trade && <Badge variant="outline">{selected.trade}</Badge>}
                 </div>
+                <p className="flex items-center gap-1.5 text-muted-foreground">
+                  <UserRound className="h-4 w-4" />
+                  {selected.assignedToName
+                    ? `Assigned to ${selected.assignedToName}`
+                    : "Not assigned to any Sub-Con yet"}
+                </p>
                 {selected.description && (
                   <p className="text-muted-foreground">{selected.description}</p>
                 )}
@@ -429,7 +443,7 @@ function Board({
 
                 {/* Defect reference photos */}
                 <div className="space-y-2 border-t pt-3">
-                  <p className="font-medium">Defect photos</p>
+                  <p className="font-medium">Defect Photos</p>
                   {selected.defectPhotos.length > 0 ? (
                     <PhotoGrid photos={selected.defectPhotos} />
                   ) : (
@@ -452,7 +466,7 @@ function Board({
                         ) : (
                           <ImagePlus className="h-4 w-4" />
                         )}
-                        Add photo
+                        Upload defect photo
                       </Button>
                     </div>
                     <p className="text-xs text-muted-foreground">
@@ -463,12 +477,13 @@ function Board({
 
                 {/* Completion photos (sub-con proof of fix) */}
                 <div className="space-y-2 border-t pt-3">
-                  <p className="font-medium">Completion photos</p>
+                  <p className="font-medium">Completion Photos</p>
                   {selected.completionPhotos.length > 0 ? (
                     <PhotoGrid photos={selected.completionPhotos} />
                   ) : (
                     <p className="text-xs text-muted-foreground">
-                      No completion photos yet.
+                      No Completion Photos yet. The Sub-Con uploads these as
+                      proof of fix.
                     </p>
                   )}
                 </div>

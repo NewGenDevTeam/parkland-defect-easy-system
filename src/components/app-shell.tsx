@@ -40,6 +40,7 @@ const NAV: Record<UserRole, NavItem[]> = {
   MAIN_CON: [
     { label: "Dashboard", href: "/main", icon: LayoutDashboard, exact: true },
     { label: "Projects", href: "/main/projects", icon: FolderKanban },
+    { label: "Defects", href: "/main/defects", icon: ClipboardList },
   ],
   SUB_CON: [
     { label: "My Defects", href: "/sub", icon: ClipboardList },
@@ -47,8 +48,8 @@ const NAV: Record<UserRole, NavItem[]> = {
 };
 
 const ROLE_LABEL: Record<UserRole, string> = {
-  MAIN_CON: "Main Contractor",
-  SUB_CON: "Sub Contractor",
+  MAIN_CON: "Main-Con",
+  SUB_CON: "Sub-Con",
 };
 
 function initials(name: string) {

@@ -4,6 +4,8 @@ import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   STATUS_LABEL,
   PRIORITY_LABEL,
@@ -25,9 +27,11 @@ export default async function SubDashboard() {
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">My Defects</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          My Assigned Defects
+        </h1>
         <p className="text-sm text-muted-foreground">
-          Defects assigned to you across all projects.
+          Defects assigned to you across all Projects.
         </p>
       </div>
 
@@ -38,7 +42,7 @@ export default async function SubDashboard() {
             <div>
               <p className="font-medium">Nothing assigned yet</p>
               <p className="text-sm text-muted-foreground">
-                Defects assigned to you by the main contractor will appear here.
+                Defects assigned to you by the Main-Con will appear here.
               </p>
             </div>
           </CardContent>
@@ -70,7 +74,15 @@ export default async function SubDashboard() {
                       {d.trade && <Badge variant="outline">{d.trade}</Badge>}
                     </div>
                   </div>
-                  <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+                  <span
+                    className={cn(
+                      buttonVariants({ variant: "outline", size: "sm" }),
+                      "pointer-events-none hidden shrink-0 sm:inline-flex",
+                    )}
+                  >
+                    Open Defect
+                  </span>
+                  <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground sm:hidden" />
                 </CardContent>
               </Card>
             </Link>
