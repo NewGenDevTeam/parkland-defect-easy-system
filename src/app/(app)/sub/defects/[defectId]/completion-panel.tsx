@@ -96,7 +96,9 @@ export function CompletionPanel({
               required
               className="text-sm"
             />
-            <p className="text-xs text-muted-foreground">{UPLOAD_HELP_TEXT}</p>
+            <p className="text-xs text-muted-foreground">
+              Take or upload completion photo. {UPLOAD_HELP_TEXT}.
+            </p>
             <Button type="submit" variant="outline" disabled={pending} className="w-full">
               {pending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

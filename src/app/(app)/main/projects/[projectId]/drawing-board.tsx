@@ -452,13 +452,16 @@ function Board({
                     </p>
                   )}
                   <form onSubmit={submitDefectPhoto} className="space-y-2">
+                    <p className="text-sm font-medium">Take / Upload Photo</p>
                     <div className="flex flex-col gap-2 sm:flex-row">
+                      {/* capture="environment" opens the rear camera on mobile devices */}
                       <Input
                         type="file"
                         name="file"
                         accept="image/*"
+                        capture="environment"
                         required
-                        className="text-xs"
+                        className="text-sm"
                       />
                       <Button type="submit" variant="outline" disabled={pending}>
                         {pending ? (
@@ -466,11 +469,11 @@ function Board({
                         ) : (
                           <ImagePlus className="h-4 w-4" />
                         )}
-                        Upload defect photo
+                        Save defect photo
                       </Button>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {UPLOAD_HELP_TEXT}
+                      Take or upload defect photo. {UPLOAD_HELP_TEXT}.
                     </p>
                   </form>
                 </div>
