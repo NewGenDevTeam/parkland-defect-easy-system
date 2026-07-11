@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -54,6 +54,69 @@ const ROLE_LABEL: Record<UserRole, string> = {
   SUB_CON: "Sub-Con",
 };
 
+// --- Mobile drawer swipe gestures ------------------------------------------
+// Best-effort enhancement: swipe right from the left screen edge opens the
+// drawer; swipe left on the open drawer/overlay closes it. Touch-only and
+// small-screen-only; hamburger / X / overlay / links stay the primary
+// controls.
+//
+// Why Touch Events (not Pointer Events): once the browser decides a touch is
+// a scroll it fires pointercancel and the gesture dies, so a passive
+// pointer-based detector never sees the swipe complete. With touch events we
+// can wait for horizontal intent within the first few px of movement and only
+// then claim the gesture via preventDefault (touchmove listener is attached
+// non-passively ONLY for the duration of a candidate gesture, so normal page
+// scrolling never pays for it). Vertical movement or a wrong-direction swipe
+// hands control straight back to the browser untouched.
+
+/** Open gesture must start within this many px of the left screen edge. */
+const SWIPE_EDGE_PX = 32;
+/** Horizontal travel required to open/close the drawer. */
+const SWIPE_DISTANCE_PX = 70;
+/** Horizontal movement must clearly dominate vertical movement. */
+const SWIPE_AXIS_RATIO = 1.3;
+/** Movement needed before we commit to (or reject) a horizontal intent. */
+const SWIPE_INTENT_PX = 10;
+/** Tailwind `md` breakpoint: at and above it the fixed sidebar is shown. */
+const MD_BREAKPOINT_PX = 768;
+
+// Interactive elements and gesture-owning areas (floor plan viewer, dialogs)
+// where an edge swipe must never start.
+const SWIPE_EXCLUDE_SELECTOR =
+  'button, a, input, textarea, select, [role="dialog"], [data-slot="dialog-overlay"], [data-disable-nav-swipe="true"]';
+
+type SwipeState = { x: number; y: number; claimed: boolean };
+
+/**
+ * Shared horizontal-swipe step: returns "done" when the swipe completed in
+ * `direction` (+1 right / -1 left), "reject" when the movement is vertical
+ * (scrolling) or the wrong way, "track" while still in progress. Claims the
+ * gesture (preventDefault) only after horizontal intent is established.
+ */
+function stepSwipe(
+  state: SwipeState,
+  e: TouchEvent,
+  direction: 1 | -1,
+): "done" | "reject" | "track" {
+  if (e.touches.length !== 1) return "reject"; // multi-touch (pinch etc.)
+  const t = e.touches[0];
+  const dx = t.clientX - state.x;
+  const dy = t.clientY - state.y;
+  if (!state.claimed) {
+    if (Math.hypot(dx, dy) < SWIPE_INTENT_PX) return "track"; // too early
+    if (dx * direction <= 0 || Math.abs(dx) <= Math.abs(dy) * SWIPE_AXIS_RATIO) {
+      return "reject"; // vertical scroll or wrong direction — browser's touch
+    }
+    state.claimed = true;
+  }
+  // Ours now: stop the browser from starting a scroll / native gesture.
+  if (e.cancelable) e.preventDefault();
+  return dx * direction >= SWIPE_DISTANCE_PX &&
+    Math.abs(dx) > Math.abs(dy) * SWIPE_AXIS_RATIO
+    ? "done"
+    : "track";
+}
+
 function initials(name: string) {
   return name
     .split(" ")
@@ -90,6 +153,108 @@ export function AppShell({
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prev;
+    };
+  }, [mobileOpen]);
+
+  // Swipe-right from the left edge opens the drawer. Document-level because
+  // the gesture starts on arbitrary page content; gated to single-touch,
+  // small screens, the edge zone, and non-interactive targets, so it can
+  // never shadow the floor plan, dialogs, scrolling, or plain taps.
+  const mobileOpenRef = useRef(mobileOpen);
+  useEffect(() => {
+    mobileOpenRef.current = mobileOpen;
+  }, [mobileOpen]);
+  useEffect(() => {
+    let state: SwipeState | null = null;
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!state) return;
+      const result = stepSwipe(state, e, 1);
+      if (result === "done") {
+        cleanup();
+        setMobileOpen(true);
+      } else if (result === "reject") {
+        cleanup();
+      }
+    };
+    const cleanup = () => {
+      state = null;
+      document.removeEventListener("touchmove", onTouchMove);
+      document.removeEventListener("touchend", cleanup);
+      document.removeEventListener("touchcancel", cleanup);
+    };
+    const onTouchStart = (e: TouchEvent) => {
+      if (state) {
+        cleanup(); // a second finger joined — abandon the gesture
+        return;
+      }
+      if (e.touches.length !== 1) return;
+      if (mobileOpenRef.current) return; // closing is handled on the drawer
+      if (window.innerWidth >= MD_BREAKPOINT_PX) return; // fixed sidebar shown
+      const t = e.touches[0];
+      if (t.clientX > SWIPE_EDGE_PX) return;
+      if (
+        e.target instanceof Element &&
+        e.target.closest(SWIPE_EXCLUDE_SELECTOR)
+      ) {
+        return;
+      }
+      state = { x: t.clientX, y: t.clientY, claimed: false };
+      // Non-passive only while this candidate gesture is alive.
+      document.addEventListener("touchmove", onTouchMove, { passive: false });
+      document.addEventListener("touchend", cleanup, { passive: true });
+      document.addEventListener("touchcancel", cleanup, { passive: true });
+    };
+
+    document.addEventListener("touchstart", onTouchStart, { passive: true });
+    return () => {
+      cleanup();
+      document.removeEventListener("touchstart", onTouchStart);
+    };
+  }, []);
+
+  // Swipe-left anywhere on the open drawer (sidebar or overlay) closes it.
+  // Native listeners scoped to the drawer element (React's own touch handlers
+  // are passive, so they could not claim the gesture). Taps and vertical nav
+  // scrolling keep native behaviour — only a clearly horizontal left swipe is
+  // claimed.
+  const drawerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const drawer = drawerRef.current;
+    if (!mobileOpen || !drawer) return;
+    let state: SwipeState | null = null;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (state || e.touches.length !== 1) {
+        state = null; // multi-touch — abandon the gesture
+        return;
+      }
+      const t = e.touches[0];
+      state = { x: t.clientX, y: t.clientY, claimed: false };
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (!state) return;
+      const result = stepSwipe(state, e, -1);
+      if (result === "done") {
+        state = null;
+        setMobileOpen(false);
+      } else if (result === "reject") {
+        state = null;
+      }
+    };
+    const reset = () => {
+      state = null;
+    };
+
+    drawer.addEventListener("touchstart", onTouchStart, { passive: true });
+    drawer.addEventListener("touchmove", onTouchMove, { passive: false });
+    drawer.addEventListener("touchend", reset, { passive: true });
+    drawer.addEventListener("touchcancel", reset, { passive: true });
+    return () => {
+      drawer.removeEventListener("touchstart", onTouchStart);
+      drawer.removeEventListener("touchmove", onTouchMove);
+      drawer.removeEventListener("touchend", reset);
+      drawer.removeEventListener("touchcancel", reset);
     };
   }, [mobileOpen]);
 
@@ -138,7 +303,7 @@ export function AppShell({
 
       {/* Mobile drawer */}
       {mobileOpen && (
-        <div className="fixed inset-0 z-40 md:hidden">
+        <div ref={drawerRef} className="fixed inset-0 z-40 md:hidden">
           {/* Real <button> instead of a div: iOS Safari does not reliably
               deliver delegated click events for non-interactive elements. */}
           <button

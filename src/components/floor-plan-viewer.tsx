@@ -502,6 +502,10 @@ export function FloorPlanViewer({
   return (
     <div
       ref={rootRef}
+      // The viewer owns its touch gestures (pan/pinch/tap-to-place); this
+      // attribute stops the AppShell edge-swipe (open sidebar) from ever
+      // starting inside it.
+      data-disable-nav-swipe="true"
       // In browser fullscreen — or the CSS expanded-view fallback — the root
       // fills the screen: toolbar on top, dark backdrop, drawing letterboxed
       // in the remaining space.
