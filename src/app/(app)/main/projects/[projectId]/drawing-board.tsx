@@ -1,9 +1,8 @@
 "use client";
 
-import { useActionState, useRef, useState, useTransition } from "react";
-import Image from "next/image";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ImageUp, ImagePlus, Loader2, Plus, UserRound } from "lucide-react";
+import { Hand, ImageUp, ImagePlus, Loader2, MapPin, UserRound } from "lucide-react";
 import {
   createDefect,
   updateDefect,
@@ -12,6 +11,7 @@ import {
   reviewDefect,
 } from "../actions";
 import { PhotoGrid, type GridPhoto } from "@/components/photo-grid";
+import { FloorPlanViewer } from "@/components/floor-plan-viewer";
 import { checkImageFile, UPLOAD_HELP_TEXT } from "@/lib/upload-limits";
 import {
   STATUS_LABEL,
@@ -166,6 +166,8 @@ function Board({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  // "view" = pan/zoom; "place" = the next tap on the plan drops a defect pin.
+  const [mode, setMode] = useState<"view" | "place">("view");
   const [createPos, setCreatePos] = useState<{ x: number; y: number } | null>(
     null,
   );
@@ -176,35 +178,45 @@ function Board({
   const selected = defects.find((d) => d.id === selectedId) ?? null;
   const [reopenReason, setReopenReason] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const imgWrapRef = useRef<HTMLDivElement>(null);
 
-  function handleBoardClick(e: React.MouseEvent<HTMLDivElement>) {
-    const rect = imgWrapRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
-    if (x < 0 || x > 1 || y < 0 || y > 1) return;
+  // Escape exits Add Defect Pin mode.
+  useEffect(() => {
+    if (mode !== "place") return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMode("view");
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [mode]);
+
+  function handlePlacePin(x: number, y: number) {
     setError(null);
     setCreatePos({ x, y });
+    // Auto-exit place mode; the Add Defect modal opens for this position.
+    setMode("view");
   }
 
   function submitCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!createPos) return;
     const fd = new FormData(e.currentTarget);
-    const input = {
-      projectId,
-      drawingId: drawing.id,
-      x: createPos.x,
-      y: createPos.y,
-      title: String(fd.get("title") ?? ""),
-      description: String(fd.get("description") ?? ""),
-      trade: String(fd.get("trade") ?? ""),
-      priority: String(fd.get("priority") ?? "MEDIUM"),
-      assignedToId: String(fd.get("assignedToId") ?? ""),
-    };
+    // Client-side guard for the optional photo: reject oversized/non-image
+    // before the Server Action body limit turns it into a raw error.
+    const photo = fd.get("photo");
+    if (photo instanceof File && photo.size > 0) {
+      const err = checkImageFile(photo);
+      if (err) {
+        setError(err);
+        return;
+      }
+    }
+    fd.set("projectId", projectId);
+    fd.set("drawingId", drawing.id);
+    fd.set("x", String(createPos.x));
+    fd.set("y", String(createPos.y));
+    setError(null);
     startTransition(async () => {
-      const res = await createDefect(input);
+      const res = await createDefect(fd);
       if (res.error) {
         setError(res.error);
       } else {
@@ -290,56 +302,60 @@ function Board({
 
   return (
     <div className="space-y-3">
-      <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-        <Plus className="h-4 w-4" />
-        Click on the drawing to add a defect pin. Click a pin to open the
-        defect.
-      </p>
-
-      <div
-        ref={imgWrapRef}
-        onClick={handleBoardClick}
-        className="relative w-full cursor-crosshair overflow-hidden rounded-xl border bg-muted/30 select-none"
-      >
-        <Image
-          src={drawing.imageUrl}
-          alt="Floor plan"
-          width={1600}
-          height={1200}
-          className="pointer-events-none h-auto w-full"
-          unoptimized
-          priority
-        />
-
-        {defects.map((d) => (
-          <button
-            key={d.id}
-            type="button"
-            title={`#${d.pinNumber} ${d.title}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              setError(null);
-              setReopenReason("");
-              setSelectedId(d.id);
-            }}
-            style={{ left: `${d.x * 100}%`, top: `${d.y * 100}%` }}
-            className="absolute -translate-x-1/2 -translate-y-1/2 focus:outline-none"
-          >
-            <span
-              className={`flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-xs font-bold text-white shadow-md ring-1 ring-black/20 ${STATUS_PIN_COLOR[d.status]}`}
+      <FloorPlanViewer
+        imageUrl={drawing.imageUrl}
+        mode={mode}
+        onPlacePin={handlePlacePin}
+        onSelectPin={(id) => {
+          setError(null);
+          setReopenReason("");
+          setSelectedId(id);
+        }}
+        selectedPinId={selectedId}
+        draftPin={createPos}
+        pins={defects.map((d) => ({
+          id: d.id,
+          x: d.x,
+          y: d.y,
+          label: d.pinNumber,
+          colorClass: STATUS_PIN_COLOR[d.status],
+          title: `#${d.pinNumber} ${d.title}`,
+        }))}
+        toolbarStart={
+          <>
+            <Button
+              type="button"
+              size="sm"
+              variant={mode === "view" ? "default" : "outline"}
+              onClick={() => setMode("view")}
             >
-              {d.pinNumber}
-            </span>
-          </button>
-        ))}
-      </div>
+              <Hand className="h-4 w-4" />
+              View / Move
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={mode === "place" ? "default" : "outline"}
+              onClick={() => setMode(mode === "place" ? "view" : "place")}
+            >
+              <MapPin className="h-4 w-4" />
+              Add Defect Pin
+            </Button>
+          </>
+        }
+      />
+      <p className="text-sm text-muted-foreground">
+        {mode === "place"
+          ? "Zoom to the affected area, then click the exact defect location. Press Escape or Add Defect Pin again to cancel."
+          : "Drag to pan and zoom in for detail. Click a pin to open the defect. Use Add Defect Pin to add a new one."}
+      </p>
 
       {/* Create defect dialog */}
       <Dialog
         open={createPos !== null}
         onOpenChange={(o) => !o && setCreatePos(null)}
       >
-        <DialogContent>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add defect</DialogTitle>
             <DialogDescription>
@@ -358,6 +374,21 @@ function Board({
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
               <Textarea id="description" name="description" rows={2} placeholder="Optional" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="photo">Defect Photo</Label>
+              {/* capture="environment" opens the rear camera on mobile devices */}
+              <Input
+                id="photo"
+                type="file"
+                name="photo"
+                accept="image/*"
+                capture="environment"
+                className="text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                Take or upload defect photo. {UPLOAD_HELP_TEXT}.
+              </p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">

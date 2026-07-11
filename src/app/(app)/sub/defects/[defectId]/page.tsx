@@ -1,12 +1,12 @@
 import Link from "next/link";
-import Image from "next/image";
 import { notFound } from "next/navigation";
-import { ArrowLeft, MapPin } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PhotoGrid } from "@/components/photo-grid";
+import { FloorPlanViewer } from "@/components/floor-plan-viewer";
 import {
   STATUS_LABEL,
   PRIORITY_LABEL,
@@ -111,31 +111,24 @@ export default async function SubDefectDetailPage({
         <CardContent className="space-y-2">
           {defect.drawing ? (
             <>
-              <div className="relative w-full overflow-hidden rounded-xl border bg-muted/30">
-                <Image
-                  src={defect.drawing.imageUrl}
-                  alt="Floor plan"
-                  width={1600}
-                  height={1200}
-                  className="h-auto w-full"
-                  unoptimized
-                />
-                <span
-                  style={{ left: `${defect.x * 100}%`, top: `${defect.y * 100}%` }}
-                  className="absolute block h-7 w-7 -translate-x-1/2 -translate-y-1/2"
-                >
-                  <span
-                    className={`absolute inset-0 animate-ping rounded-full opacity-60 ${STATUS_PIN_COLOR[status]}`}
-                  />
-                  <span
-                    className={`relative flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-white shadow-md ring-1 ring-black/20 ${STATUS_PIN_COLOR[status]}`}
-                  >
-                    <MapPin className="h-4 w-4" />
-                  </span>
-                </span>
-              </div>
+              {/* Read-only viewer: auto-zooms and centers on this defect's pin.
+                  Sub-Con can pan/zoom but cannot add or move pins. */}
+              <FloorPlanViewer
+                imageUrl={defect.drawing.imageUrl}
+                pins={[
+                  {
+                    id: defect.id,
+                    x: defect.x,
+                    y: defect.y,
+                    colorClass: STATUS_PIN_COLOR[status],
+                    title: defect.title,
+                  },
+                ]}
+                selectedPinId={defect.id}
+                focusPoint={{ x: defect.x, y: defect.y }}
+              />
               <p className="text-xs text-muted-foreground">
-                The pin marks where this Defect is on the Floor Plan.
+                Highlighted point shows the affected location.
               </p>
             </>
           ) : (

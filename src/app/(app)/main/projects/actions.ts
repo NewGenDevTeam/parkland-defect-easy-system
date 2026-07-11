@@ -75,63 +75,66 @@ export async function uploadDrawing(
 
 // --- Defects --------------------------------------------------------------
 
-type CreateDefectInput = {
-  projectId: string;
-  drawingId: string;
-  x: number;
-  y: number;
-  title: string;
-  description?: string;
-  trade: string;
-  priority: string;
-  assignedToId?: string;
-};
-
+// Takes FormData (not a plain object) so the optional defect photo file can
+// travel in the same request as the defect fields.
 export async function createDefect(
-  input: CreateDefectInput,
+  formData: FormData,
 ): Promise<{ error?: string }> {
   const user = await requireRole("MAIN_CON");
 
-  const title = input.title?.trim();
-  const trade = input.trade?.trim();
+  const projectId = String(formData.get("projectId") ?? "");
+  const drawingId = String(formData.get("drawingId") ?? "");
+  const x = Number(formData.get("x"));
+  const y = Number(formData.get("y"));
+  const title = String(formData.get("title") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim();
+  const trade = String(formData.get("trade") ?? "").trim();
+  const priority = String(formData.get("priority") ?? "");
+  const assignedToId = String(formData.get("assignedToId") ?? "") || null;
+
   if (!title) return { error: "Title is required." };
   if (!trade) return { error: "Category / trade is required." };
-  if (!(input.priority in Priority)) return { error: "Invalid priority." };
-  if (
-    typeof input.x !== "number" ||
-    typeof input.y !== "number" ||
-    input.x < 0 ||
-    input.x > 1 ||
-    input.y < 0 ||
-    input.y > 1
-  ) {
+  if (!(priority in Priority)) return { error: "Invalid priority." };
+  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1 || y < 0 || y > 1) {
     return { error: "Invalid pin position." };
   }
 
   const drawing = await prisma.drawing.findFirst({
-    where: { id: input.drawingId, projectId: input.projectId },
+    where: { id: drawingId, projectId },
   });
   if (!drawing) return { error: "Upload a floor plan before adding defects." };
 
-  const assignedToId = input.assignedToId || null;
+  // Optional defect photo: validate and save BEFORE creating the defect so a
+  // failed upload never produces a defect that was meant to have a photo.
+  const photo = formData.get("photo");
+  let photoUrl: string | null = null;
+  if (photo instanceof File && photo.size > 0) {
+    const saved = await saveUploadedImage(photo);
+    if (saved.error) return { error: saved.error };
+    photoUrl = saved.url!;
+  }
 
+  // Nested create keeps defect + photo in a single atomic write.
   await prisma.defect.create({
     data: {
       title,
-      description: input.description?.trim() || null,
+      description: description || null,
       trade,
-      priority: input.priority as Priority,
+      priority: priority as Priority,
       status: assignedToId ? DefectStatus.ASSIGNED : DefectStatus.NEW,
-      x: input.x,
-      y: input.y,
-      projectId: input.projectId,
-      drawingId: input.drawingId,
+      x,
+      y,
+      projectId,
+      drawingId,
       createdById: user.userId,
       assignedToId,
+      ...(photoUrl
+        ? { photos: { create: { url: photoUrl, type: PhotoType.DEFECT } } }
+        : {}),
     },
   });
 
-  revalidatePath(`/main/projects/${input.projectId}`);
+  revalidatePath(`/main/projects/${projectId}`);
   return {};
 }
 
