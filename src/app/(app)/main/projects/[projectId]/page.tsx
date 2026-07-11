@@ -35,11 +35,17 @@ export default async function ProjectDetailPage({
 
   if (!project) notFound();
 
-  const subCons = await prisma.user.findMany({
-    where: { role: "SUB_CON" },
-    select: { id: true, name: true },
+  // Assignment options: only ACTIVE Sub-Cons created under this Main-Con.
+  // Label: "Company — Department", falling back to the team name.
+  const subConUsers = await prisma.user.findMany({
+    where: { role: "SUB_CON", mainConId: user.userId, active: true },
+    select: { id: true, name: true, companyName: true, department: true },
     orderBy: { name: "asc" },
   });
+  const subCons = subConUsers.map((s) => ({
+    id: s.id,
+    label: `${s.companyName || s.name}${s.department ? ` — ${s.department}` : ""}`,
+  }));
 
   const drawing = project.drawings[0] ?? null;
 

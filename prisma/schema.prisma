@@ -48,9 +48,23 @@ model User {
   role         Role
   createdAt    DateTime @default(now())
 
+  // Sub-Con profile (Phase 5). Inactive accounts cannot log in and are hidden
+  // from new assignment dropdowns; history stays intact (never hard-delete).
+  companyName String?
+  department  String? // trade, e.g. Plumbing, Tiling, Electrical
+  phone       String?
+  active      Boolean @default(true)
+
+  // Self-relation: one MAIN_CON manages many SUB_CON accounts.
+  mainConId      String?
+  mainCon        User?   @relation("ManagedSubCons", fields: [mainConId], references: [id])
+  managedSubCons User[]  @relation("ManagedSubCons")
+
   ownedProjects   Project[] @relation("ProjectOwner")
   assignedDefects Defect[]  @relation("AssignedSubCon")
   createdDefects  Defect[]  @relation("DefectCreator")
+
+  @@index([mainConId])
 }
 
 model Project {

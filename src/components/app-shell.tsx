@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -9,6 +9,7 @@ import {
   ClipboardList,
   FolderKanban,
   Menu,
+  UsersRound,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -41,6 +42,7 @@ const NAV: Record<UserRole, NavItem[]> = {
     { label: "Dashboard", href: "/main", icon: LayoutDashboard, exact: true },
     { label: "Projects", href: "/main/projects", icon: FolderKanban },
     { label: "Defects", href: "/main/defects", icon: ClipboardList },
+    { label: "Sub-Contractors", href: "/main/sub-contractors", icon: UsersRound },
   ],
   SUB_CON: [
     { label: "My Defects", href: "/sub", icon: ClipboardList },
@@ -71,6 +73,25 @@ export function AppShell({
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const items = NAV[user.role];
+
+  // Close the drawer on any route change (covers back/forward navigation, not
+  // just link taps) so it never sticks open over the new page. Render-time
+  // state adjustment per react.dev/learn/you-might-not-need-an-effect.
+  const [prevPathname, setPrevPathname] = useState(pathname);
+  if (prevPathname !== pathname) {
+    setPrevPathname(pathname);
+    setMobileOpen(false);
+  }
+
+  // Lock background scrolling while the drawer is open; restore on close.
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [mobileOpen]);
 
   const nav = (
     <nav className="flex flex-col gap-1 p-3">
@@ -118,16 +139,22 @@ export function AppShell({
       {/* Mobile drawer */}
       {mobileOpen && (
         <div className="fixed inset-0 z-40 md:hidden">
-          <div
-            className="absolute inset-0 bg-black/50"
+          {/* Real <button> instead of a div: iOS Safari does not reliably
+              deliver delegated click events for non-interactive elements. */}
+          <button
+            type="button"
+            aria-label="Close menu"
+            className="absolute inset-0 h-full w-full cursor-default bg-black/50"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="absolute left-0 top-0 flex h-full w-64 flex-col border-r bg-background">
+          <aside className="absolute left-0 top-0 flex h-full w-64 flex-col overflow-y-auto border-r bg-background">
             <div className="flex items-center justify-between pr-2">
               {brand}
               <Button
                 variant="ghost"
                 size="icon"
+                type="button"
+                className="size-11"
                 onClick={() => setMobileOpen(false)}
                 aria-label="Close menu"
               >
@@ -145,7 +172,8 @@ export function AppShell({
           <Button
             variant="ghost"
             size="icon"
-            className="md:hidden"
+            type="button"
+            className="size-11 -ml-2 md:hidden"
             onClick={() => setMobileOpen(true)}
             aria-label="Open menu"
           >

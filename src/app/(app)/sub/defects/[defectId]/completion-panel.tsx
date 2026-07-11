@@ -4,9 +4,17 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Camera, CheckCircle2, Loader2, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import {
+  MultiPhotoInput,
+  appendPhotos,
+  usePhotoFiles,
+} from "@/components/photo-file-input";
 import { PhotoGrid, type GridPhoto } from "@/components/photo-grid";
-import { checkImageFile, UPLOAD_HELP_TEXT } from "@/lib/upload-limits";
+import {
+  checkTotalUploadSize,
+  NO_FILES_ERROR,
+  UPLOAD_HELP_TEXT,
+} from "@/lib/upload-limits";
 import {
   STATUS_LABEL,
   type DefectStatusValue,
@@ -33,28 +41,33 @@ export function CompletionPanel({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // Selected-but-not-yet-uploaded completion photos: camera appends one per
+  // capture, gallery can add several at once. Client-side type/size/limit
+  // checks live in the hook; the server re-validates authoritatively.
+  const photos = usePhotoFiles({ onError: setError });
 
-  function submitPhoto(e: React.FormEvent<HTMLFormElement>) {
+  function submitPhotos(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = e.currentTarget;
-    const fd = new FormData(form);
-    const file = fd.get("file");
-    // Client-side guard so oversized photos never hit the Server Action body
-    // limit — show a friendly message instead of a raw "Body exceeded" error.
-    if (file instanceof File) {
-      const err = checkImageFile(file);
-      if (err) {
-        setError(err);
-        return;
-      }
+    if (pending) return;
+    if (photos.items.length === 0) {
+      setError(NO_FILES_ERROR);
+      return;
     }
+    const totalErr = checkTotalUploadSize(photos.items.map((it) => it.file));
+    if (totalErr) {
+      setError(totalErr);
+      return;
+    }
+    const fd = new FormData();
+    appendPhotos(fd, photos.items);
     fd.set("defectId", defectId);
     setError(null);
     startTransition(async () => {
       const res = await uploadCompletionPhoto(fd);
+      // Upload failed: keep the selected files so the sub-con can retry.
       if (res.error) setError(res.error);
       else {
-        form.reset();
+        photos.clearFiles();
         router.refresh();
       }
     });
@@ -85,28 +98,28 @@ export function CompletionPanel({
         )}
 
         {canUpload && (
-          <form onSubmit={submitPhoto} className="flex flex-col gap-2">
-            <p className="text-sm font-medium">Take or upload completion photo</p>
-            {/* capture="environment" opens the rear camera on mobile devices */}
-            <Input
-              type="file"
-              name="file"
-              accept="image/*"
-              capture="environment"
-              required
-              className="text-sm"
+          <form onSubmit={submitPhotos} className="flex flex-col gap-2">
+            <p className="text-sm font-medium">Take or upload completion photos</p>
+            <MultiPhotoInput
+              items={photos.items}
+              onAddFiles={photos.addFiles}
+              onRemove={photos.removeFile}
             />
             <p className="text-xs text-muted-foreground">
-              Take or upload completion photo. {UPLOAD_HELP_TEXT}.
+              Take or upload completion photos. {UPLOAD_HELP_TEXT}, up to 5
+              photos per upload.
             </p>
-            <Button type="submit" variant="outline" disabled={pending} className="w-full">
-              {pending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Camera className="h-4 w-4" />
-              )}
-              Add Completion Photo
-            </Button>
+            {photos.items.length > 0 && (
+              <Button type="submit" variant="outline" disabled={pending} className="w-full">
+                {pending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Camera className="h-4 w-4" />
+                )}
+                Upload {photos.items.length} Completion Photo
+                {photos.items.length > 1 ? "s" : ""}
+              </Button>
+            )}
           </form>
         )}
       </div>

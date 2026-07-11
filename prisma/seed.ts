@@ -20,14 +20,25 @@ async function main() {
     },
   });
 
+  // The seeded sub-con belongs to the seeded main-con (Phase 5 ownership).
+  // The update block also links legacy rows where mainConId is still null,
+  // without touching their password.
   const subCon = await prisma.user.upsert({
     where: { email: "subcon@parkland.com" },
-    update: {},
+    update: {
+      mainConId: mainCon.id,
+      companyName: "Parkland Sub-Contractor",
+      department: "General Works",
+      active: true,
+    },
     create: {
       email: "subcon@parkland.com",
       name: "Sub Contractor",
+      companyName: "Parkland Sub-Contractor",
+      department: "General Works",
       passwordHash: password,
       role: "SUB_CON",
+      mainConId: mainCon.id,
     },
   });
 

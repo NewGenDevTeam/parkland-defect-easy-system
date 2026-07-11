@@ -4,12 +4,19 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth";
-import { saveUploadedImage } from "@/lib/upload";
+import {
+  saveUploadedImage,
+  saveUploadedImages,
+  deleteUploadedImage,
+  deleteUploadedImages,
+} from "@/lib/upload";
+import { NO_FILES_ERROR } from "@/lib/upload-limits";
 import {
   Priority,
   DefectStatus,
   ProjectStatus,
   PhotoType,
+  Role,
 } from "@/generated/prisma/enums";
 
 // --- Projects -------------------------------------------------------------
@@ -61,13 +68,19 @@ export async function uploadDrawing(
   const saved = await saveUploadedImage(formData.get("file"));
   if (saved.error) return { error: saved.error };
 
-  await prisma.drawing.create({
-    data: {
-      name: (formData.get("file") as File).name,
-      imageUrl: saved.url!,
-      projectId,
-    },
-  });
+  try {
+    await prisma.drawing.create({
+      data: {
+        name: (formData.get("file") as File).name,
+        imageUrl: saved.url!,
+        projectId,
+      },
+    });
+  } catch {
+    // DB write failed after the file hit disk — remove the orphan file.
+    await deleteUploadedImage(saved.url!);
+    return { error: "Could not save the floor plan. Please try again." };
+  }
 
   revalidatePath(`/main/projects/${projectId}`);
   return {};
@@ -104,35 +117,59 @@ export async function createDefect(
   });
   if (!drawing) return { error: "Upload a floor plan before adding defects." };
 
-  // Optional defect photo: validate and save BEFORE creating the defect so a
-  // failed upload never produces a defect that was meant to have a photo.
-  const photo = formData.get("photo");
-  let photoUrl: string | null = null;
-  if (photo instanceof File && photo.size > 0) {
-    const saved = await saveUploadedImage(photo);
-    if (saved.error) return { error: saved.error };
-    photoUrl = saved.url!;
+  // New assignments must go to an ACTIVE Sub-Con owned by this Main-Con.
+  if (assignedToId) {
+    const subCon = await prisma.user.findFirst({
+      where: {
+        id: assignedToId,
+        role: Role.SUB_CON,
+        mainConId: user.userId,
+        active: true,
+      },
+      select: { id: true },
+    });
+    if (!subCon) return { error: "Invalid Sub-Con selected." };
   }
 
-  // Nested create keeps defect + photo in a single atomic write.
-  await prisma.defect.create({
-    data: {
-      title,
-      description: description || null,
-      trade,
-      priority: priority as Priority,
-      status: assignedToId ? DefectStatus.ASSIGNED : DefectStatus.NEW,
-      x,
-      y,
-      projectId,
-      drawingId,
-      createdById: user.userId,
-      assignedToId,
-      ...(photoUrl
-        ? { photos: { create: { url: photoUrl, type: PhotoType.DEFECT } } }
-        : {}),
-    },
-  });
+  // Optional defect photos (up to 5): ALL are validated before ANY is saved,
+  // so an invalid file never produces a partial defect. Zero photos is fine.
+  const saved = await saveUploadedImages(formData.getAll("photos"));
+  if (saved.error) return { error: saved.error };
+  const photoUrls = saved.urls!;
+
+  // Nested create keeps defect + photos in a single atomic write: either all
+  // rows exist afterwards or none do.
+  try {
+    await prisma.defect.create({
+      data: {
+        title,
+        description: description || null,
+        trade,
+        priority: priority as Priority,
+        status: assignedToId ? DefectStatus.ASSIGNED : DefectStatus.NEW,
+        x,
+        y,
+        projectId,
+        drawingId,
+        createdById: user.userId,
+        assignedToId,
+        ...(photoUrls.length > 0
+          ? {
+              photos: {
+                create: photoUrls.map((url) => ({
+                  url,
+                  type: PhotoType.DEFECT,
+                })),
+              },
+            }
+          : {}),
+      },
+    });
+  } catch {
+    // DB write failed after the photos hit disk — remove the orphan files.
+    await deleteUploadedImages(photoUrls);
+    return { error: "Could not create the defect. Please try again." };
+  }
 
   revalidatePath(`/main/projects/${projectId}`);
   return {};
@@ -144,14 +181,35 @@ export async function updateDefect(input: {
   assignedToId?: string;
   status: string;
 }): Promise<{ error?: string }> {
-  await requireRole("MAIN_CON");
+  const user = await requireRole("MAIN_CON");
 
   if (!(input.status in DefectStatus)) return { error: "Invalid status." };
 
+  const defect = await prisma.defect.findFirst({
+    where: { id: input.defectId, project: { ownerId: user.userId } },
+    select: { id: true, assignedToId: true },
+  });
+  if (!defect) return { error: "Defect not found." };
+
   const assignedToId = input.assignedToId || null;
 
+  // Keeping the current assignee (even if deactivated) is always allowed;
+  // a NEW assignee must be an ACTIVE Sub-Con owned by this Main-Con.
+  if (assignedToId && assignedToId !== defect.assignedToId) {
+    const subCon = await prisma.user.findFirst({
+      where: {
+        id: assignedToId,
+        role: Role.SUB_CON,
+        mainConId: user.userId,
+        active: true,
+      },
+      select: { id: true },
+    });
+    if (!subCon) return { error: "Invalid Sub-Con selected." };
+  }
+
   await prisma.defect.update({
-    where: { id: input.defectId },
+    where: { id: defect.id },
     data: {
       assignedToId,
       status: input.status as DefectStatus,
@@ -165,8 +223,9 @@ export async function updateDefect(input: {
 // --- Defect reference photos (MAIN_CON) -----------------------------------
 
 /**
- * Upload a DEFECT reference photo for a defect the main-con owns.
- * Image is saved to local public/uploads (dev/demo only — see src/lib/upload.ts).
+ * Upload additional DEFECT reference photos (up to 5 per save) for a defect
+ * the main-con owns. Existing photos are never touched. Images are saved to
+ * the local runtime uploads folder (dev/demo only — see src/lib/upload.ts).
  */
 export async function uploadDefectPhoto(
   formData: FormData,
@@ -182,12 +241,24 @@ export async function uploadDefectPhoto(
   });
   if (!defect) return { error: "Defect not found." };
 
-  const saved = await saveUploadedImage(formData.get("file"));
+  const saved = await saveUploadedImages(formData.getAll("photos"));
   if (saved.error) return { error: saved.error };
+  if (saved.urls!.length === 0) return { error: NO_FILES_ERROR };
 
-  await prisma.photo.create({
-    data: { url: saved.url!, type: PhotoType.DEFECT, defectId },
-  });
+  try {
+    // createMany: one statement, so it's all-or-nothing in the database.
+    await prisma.photo.createMany({
+      data: saved.urls!.map((url) => ({
+        url,
+        type: PhotoType.DEFECT,
+        defectId,
+      })),
+    });
+  } catch {
+    // DB write failed after the files hit disk — remove the orphan files.
+    await deleteUploadedImages(saved.urls!);
+    return { error: "Could not save the photos. Please try again." };
+  }
 
   revalidatePath(`/main/projects/${projectId}`);
   return {};

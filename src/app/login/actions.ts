@@ -22,7 +22,13 @@ export async function login(
   }
 
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user || !(await verifyPassword(password, user.passwordHash))) {
+  // Deactivated accounts get the same generic message — never reveal that the
+  // account exists but is inactive.
+  if (
+    !user ||
+    !user.active ||
+    !(await verifyPassword(password, user.passwordHash))
+  ) {
     return { error: "Invalid email or password." };
   }
 
