@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, MapPin } from "lucide-react";
+import { ArrowLeft, MapPin, FileImage } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DrawingBoard, type BoardDefect } from "./drawing-board";
@@ -13,16 +14,16 @@ export default async function ProjectDetailPage({
   searchParams,
 }: {
   params: Promise<{ projectId: string }>;
-  searchParams: Promise<{ defectId?: string }>;
+  searchParams: Promise<{ defectId?: string; drawingId?: string }>;
 }) {
   const user = await requireRole("MAIN_CON");
   const { projectId } = await params;
-  const { defectId } = await searchParams;
+  const { defectId, drawingId } = await searchParams;
 
   const project = await prisma.project.findFirst({
     where: { id: projectId, ownerId: user.userId },
     include: {
-      drawings: { orderBy: { createdAt: "asc" }, take: 1 },
+      drawings: { orderBy: { createdAt: "asc" } },
       defects: {
         orderBy: { createdAt: "desc" },
         include: {
@@ -47,7 +48,17 @@ export default async function ProjectDetailPage({
     label: `${s.companyName || s.name}${s.department ? ` — ${s.department}` : ""}`,
   }));
 
-  const drawing = project.drawings[0] ?? null;
+  // Which floor plan to show: a ?defectId= deep link wins (open the drawing
+  // that defect sits on), then an explicit ?drawingId=, then the first one.
+  const linkedDefect = defectId
+    ? project.defects.find((d) => d.id === defectId)
+    : undefined;
+  const drawing =
+    (linkedDefect &&
+      project.drawings.find((dr) => dr.id === linkedDefect.drawingId)) ??
+    project.drawings.find((dr) => dr.id === drawingId) ??
+    project.drawings[0] ??
+    null;
 
   // Stable pin numbers: 1, 2, 3… in creation order, regardless of list order.
   const pinNumberById = new Map(
@@ -56,7 +67,12 @@ export default async function ProjectDetailPage({
       .map((d, i) => [d.id, i + 1]),
   );
 
-  const defects: BoardDefect[] = project.defects.map((d) => ({
+  // Only pins that belong to the drawing on screen.
+  const boardDefects = drawing
+    ? project.defects.filter((d) => d.drawingId === drawing.id)
+    : [];
+
+  const defects: BoardDefect[] = boardDefects.map((d) => ({
     id: d.id,
     pinNumber: pinNumberById.get(d.id) ?? 0,
     title: d.title,
@@ -117,8 +133,31 @@ export default async function ProjectDetailPage({
             Floor Plan &amp; Defects ({defects.length})
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {/* Drawing selector — only when the project has several floor plans.
+              Plain links so the chosen drawing lives in the URL and survives
+              refresh / sharing. Tall targets for mobile taps. */}
+          {project.drawings.length > 1 && (
+            <div className="flex flex-wrap gap-2">
+              {project.drawings.map((dr) => (
+                <Link
+                  key={dr.id}
+                  href={`/main/projects/${project.id}?drawingId=${dr.id}`}
+                  className={cn(
+                    "flex min-h-11 items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium no-underline transition-colors",
+                    dr.id === drawing?.id
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:border-primary hover:text-foreground",
+                  )}
+                >
+                  <FileImage className="h-4 w-4" />
+                  {dr.name}
+                </Link>
+              ))}
+            </div>
+          )}
           <DrawingBoard
+            key={drawing?.id ?? "none"}
             projectId={project.id}
             drawing={drawing ? { id: drawing.id, imageUrl: drawing.imageUrl } : null}
             defects={defects}

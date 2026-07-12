@@ -66,11 +66,15 @@ export const requireUser = cache(async (): Promise<AuthUser> => {
 export async function requireRole(role: UserRole): Promise<AuthUser> {
   const user = await requireUser();
   if (user.role !== role) {
-    redirect(user.role === "MAIN_CON" ? "/main" : "/sub");
+    redirect(dashboardPathForRole(user.role));
   }
   return user;
 }
 
+/**
+ * Landing page per role. Main-Con lands on project selection (pick a project
+ * → floor plan → add defects); the stats dashboard stays available at /main.
+ */
 export function dashboardPathForRole(role: UserRole): string {
-  return role === "MAIN_CON" ? "/main" : "/sub";
+  return role === "MAIN_CON" ? "/main/projects" : "/sub";
 }

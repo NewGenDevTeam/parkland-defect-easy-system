@@ -32,6 +32,23 @@ import {
 
 export type PhotoItem = { id: string; file: File; url: string };
 
+// crypto.randomUUID exists only in secure contexts (HTTPS / localhost), so it
+// throws on iPhone Safari over plain-HTTP LAN dev URLs. Prefer it when
+// available, then getRandomValues, then a time + counter + Math.random string.
+let photoIdCounter = 0;
+function newPhotoId(): string {
+  const c = globalThis.crypto;
+  if (typeof c?.randomUUID === "function") return c.randomUUID();
+  if (typeof c?.getRandomValues === "function") {
+    const bytes = c.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  photoIdCounter += 1;
+  return `photo-${Date.now().toString(36)}-${photoIdCounter}-${Math.random()
+    .toString(36)
+    .slice(2, 10)}`;
+}
+
 // Coarse pointer (touch) capability — capability detection, NOT user-agent
 // sniffing. Server snapshot is false so desktop-style markup hydrates cleanly.
 function subscribeCoarsePointer(onChange: () => void) {
@@ -103,7 +120,7 @@ export function usePhotoFiles({
       setItems((prev) => [
         ...prev,
         ...accepted.map((file) => ({
-          id: crypto.randomUUID(),
+          id: newPhotoId(),
           file,
           url: URL.createObjectURL(file),
         })),

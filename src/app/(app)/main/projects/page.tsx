@@ -1,5 +1,11 @@
 import Link from "next/link";
-import { MapPin, FolderKanban, ChevronRight } from "lucide-react";
+import {
+  MapPin,
+  FolderKanban,
+  ChevronRight,
+  FileImage,
+  ImageOff,
+} from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,16 +18,21 @@ export default async function ProjectsPage() {
   const projects = await prisma.project.findMany({
     where: { ownerId: user.userId },
     orderBy: { createdAt: "desc" },
-    include: { defects: { select: { status: true } } },
+    include: {
+      defects: { select: { status: true } },
+      _count: { select: { drawings: true } },
+    },
   });
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Select a Project
+          </h1>
           <p className="text-sm text-muted-foreground">
-            Manage your projects and floor-plan defects.
+            Choose a project to view the floor plan and add defects.
           </p>
         </div>
         <CreateProjectDialog />
@@ -83,10 +94,24 @@ export default async function ProjectsPage() {
                         <p className="text-xs text-muted-foreground">Completed</p>
                       </div>
                     </div>
-                    <p className="flex items-center justify-end gap-1 text-sm font-medium text-primary">
-                      View Project
-                      <ChevronRight className="h-4 w-4" />
-                    </p>
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                      {p._count.drawings > 0 ? (
+                        <span className="flex items-center gap-1.5 text-muted-foreground">
+                          <FileImage className="h-4 w-4" />
+                          {p._count.drawings} Floor Plan
+                          {p._count.drawings > 1 ? "s" : ""}
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1.5 text-muted-foreground">
+                          <ImageOff className="h-4 w-4" />
+                          No Floor Plan
+                        </span>
+                      )}
+                      <span className="flex items-center gap-1 font-medium text-primary">
+                        Open Floor Plan
+                        <ChevronRight className="h-4 w-4" />
+                      </span>
+                    </div>
                   </CardContent>
                 </Card>
               </Link>

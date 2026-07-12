@@ -36,10 +36,11 @@ export async function proxy(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Signed in but visiting login or root → send to their dashboard.
+  // Signed in but visiting login or root → send to their landing page
+  // (Main-Con: project selection; Sub-Con: their defect list).
   if (isLogin || pathname === "/") {
     const url = req.nextUrl.clone();
-    url.pathname = session.role === "MAIN_CON" ? "/main" : "/sub";
+    url.pathname = session.role === "MAIN_CON" ? "/main/projects" : "/sub";
     return NextResponse.redirect(url);
   }
 
@@ -51,7 +52,7 @@ export async function proxy(req: NextRequest) {
   }
   if (pathname.startsWith("/sub") && session.role !== "SUB_CON") {
     const url = req.nextUrl.clone();
-    url.pathname = "/main";
+    url.pathname = "/main/projects";
     return NextResponse.redirect(url);
   }
 

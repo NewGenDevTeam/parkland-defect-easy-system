@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Building2,
+  ChevronRight,
   LayoutDashboard,
   ClipboardList,
   FolderKanban,
@@ -39,8 +40,10 @@ type NavItem = {
 
 const NAV: Record<UserRole, NavItem[]> = {
   MAIN_CON: [
-    { label: "Dashboard", href: "/main", icon: LayoutDashboard, exact: true },
+    // Projects first: it is the Main-Con landing page after login (pick a
+    // project → floor plan → add defects). Dashboard stays available below.
     { label: "Projects", href: "/main/projects", icon: FolderKanban },
+    { label: "Dashboard", href: "/main", icon: LayoutDashboard, exact: true },
     { label: "Defects", href: "/main/defects", icon: ClipboardList },
     { label: "Sub-Contractors", href: "/main/sub-contractors", icon: UsersRound },
   ],
@@ -69,8 +72,13 @@ const ROLE_LABEL: Record<UserRole, string> = {
 // scrolling never pays for it). Vertical movement or a wrong-direction swipe
 // hands control straight back to the browser untouched.
 
-/** Open gesture must start within this many px of the left screen edge. */
-const SWIPE_EDGE_PX = 32;
+/**
+ * Open gesture must start within this many px of the left screen edge.
+ * Deliberately wide (not just the extreme edge): iPhone Safari/Chrome reserve
+ * the outermost ~20px for the browser's own back/forward gesture, so relying
+ * on it alone is unreliable — starting anywhere in this zone works instead.
+ */
+const SWIPE_EDGE_PX = 72;
 /** Horizontal travel required to open/close the drawer. */
 const SWIPE_DISTANCE_PX = 70;
 /** Horizontal movement must clearly dominate vertical movement. */
@@ -84,6 +92,9 @@ const MD_BREAKPOINT_PX = 768;
 // where an edge swipe must never start.
 const SWIPE_EXCLUDE_SELECTOR =
   'button, a, input, textarea, select, [role="dialog"], [data-slot="dialog-overlay"], [data-disable-nav-swipe="true"]';
+// …except the edge handle, which exists precisely to receive this gesture
+// (it is a <button>, so it would otherwise match the exclusion above).
+const SWIPE_HANDLE_SELECTOR = '[data-nav-swipe-handle="true"]';
 
 type SwipeState = { x: number; y: number; claimed: boolean };
 
@@ -195,6 +206,7 @@ export function AppShell({
       if (t.clientX > SWIPE_EDGE_PX) return;
       if (
         e.target instanceof Element &&
+        !e.target.closest(SWIPE_HANDLE_SELECTOR) &&
         e.target.closest(SWIPE_EXCLUDE_SELECTOR)
       ) {
         return;
@@ -300,6 +312,24 @@ export function AppShell({
         {brand}
         {nav}
       </aside>
+
+      {/* Mobile edge handle: a visible, reliable way to open the drawer since
+          iPhone browsers may capture the extreme left-edge swipe for their own
+          back gesture. Tap opens; a right-swipe starting on it opens too (it is
+          exempted from the swipe exclusion list). Hidden while the drawer is
+          open and on md+ where the fixed sidebar exists. The after: pseudo
+          extends the touch target to ~44px without growing the visible tab. */}
+      {!mobileOpen && (
+        <button
+          type="button"
+          aria-label="Open navigation"
+          data-nav-swipe-handle="true"
+          onClick={() => setMobileOpen(true)}
+          className="fixed top-1/2 left-0 z-30 flex h-14 w-6 -translate-y-1/2 items-center justify-center rounded-r-lg border border-l-0 bg-background/80 text-muted-foreground shadow-sm backdrop-blur after:absolute after:-inset-y-3 after:left-0 after:-right-5 after:content-[''] md:hidden"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      )}
 
       {/* Mobile drawer */}
       {mobileOpen && (

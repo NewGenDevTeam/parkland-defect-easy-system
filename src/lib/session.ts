@@ -1,6 +1,6 @@
 import "server-only";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
 
 export type UserRole = "MAIN_CON" | "SUB_CON";
@@ -13,7 +13,12 @@ export type SessionPayload = {
 };
 
 const SESSION_COOKIE = "session";
+// Browser-session logins get NO cookie Max-Age (cookie dies with the browser),
+// but browsers restore session cookies across restarts (Chrome "continue where
+// you left off", iOS Safari), so the JWT itself stays capped at 7 days as the
+// server-side limit. "Remember me" logins get a 30-day cookie and JWT.
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 days
+const REMEMBER_ME_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 days
 
 function getSecretKey() {
   const secret = process.env.SESSION_SECRET;
@@ -23,11 +28,14 @@ function getSecretKey() {
   return new TextEncoder().encode(secret);
 }
 
-export async function encryptSession(payload: SessionPayload): Promise<string> {
+export async function encryptSession(
+  payload: SessionPayload,
+  maxAgeSeconds: number = MAX_AGE_SECONDS,
+): Promise<string> {
   return new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime(`${MAX_AGE_SECONDS}s`)
+    .setExpirationTime(`${maxAgeSeconds}s`)
     .sign(getSecretKey());
 }
 
@@ -45,15 +53,27 @@ export async function decryptSession(
   }
 }
 
-export async function createSession(payload: SessionPayload): Promise<void> {
-  const token = await encryptSession(payload);
+export async function createSession(
+  payload: SessionPayload,
+  options: { rememberMe?: boolean } = {},
+): Promise<void> {
+  const rememberMe = options.rememberMe === true;
+  const maxAge = rememberMe ? REMEMBER_ME_MAX_AGE_SECONDS : MAX_AGE_SECONDS;
+  const token = await encryptSession(payload, maxAge);
+  // Secure must follow how the browser actually connects, not NODE_ENV:
+  // a production build served over plain HTTP (LAN phone testing against
+  // `next start`, http://192.168.x.x) would otherwise set a Secure cookie the
+  // browser refuses to store, silently logging the user out on navigation.
+  // Behind HTTPS (Railway's proxy) x-forwarded-proto is "https" → Secure on.
+  const proto = (await headers()).get("x-forwarded-proto");
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: proto?.split(",")[0]?.trim() === "https",
     sameSite: "lax",
     path: "/",
-    maxAge: MAX_AGE_SECONDS,
+    // No Max-Age/Expires without "remember me" → browser-session cookie.
+    ...(rememberMe ? { maxAge } : {}),
   });
 }
 

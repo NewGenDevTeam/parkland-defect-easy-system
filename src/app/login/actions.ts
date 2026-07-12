@@ -16,6 +16,8 @@ export async function login(
     .trim()
     .toLowerCase();
   const password = String(formData.get("password") ?? "");
+  // Unchecked checkboxes are absent from FormData; checked ones submit "on".
+  const rememberMe = formData.get("rememberMe") === "on";
 
   if (!email || !password) {
     return { error: "Please enter your email and password." };
@@ -32,12 +34,15 @@ export async function login(
     return { error: "Invalid email or password." };
   }
 
-  await createSession({
-    userId: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role as UserRole,
-  });
+  await createSession(
+    {
+      userId: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role as UserRole,
+    },
+    { rememberMe },
+  );
 
   redirect(dashboardPathForRole(user.role as UserRole));
 }
