@@ -1,16 +1,22 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useSyncExternalStore } from "react"
 import { useTheme } from "@/components/theme-provider"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
 
+// Nothing to subscribe to — this store only differs between server and client.
+const emptySubscribe = () => () => {}
+
 const Toaster = ({ ...props }: ToasterProps) => {
   const { resolvedTheme } = useTheme()
   // Server render and first client render both use "system" so hydration
-  // matches; the real resolved theme applies right after mount.
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => setMounted(true), [])
+  // matches; the real resolved theme applies right after hydration.
+  const mounted = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false,
+  )
 
   return (
     <Sonner

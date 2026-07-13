@@ -2,7 +2,17 @@
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Hand, ImageUp, ImagePlus, Loader2, MapPin, UserRound } from "lucide-react";
+import { toast } from "sonner";
+import {
+  ChevronDown,
+  ChevronUp,
+  Hand,
+  ImageUp,
+  ImagePlus,
+  Loader2,
+  MapPin,
+  UserRound,
+} from "lucide-react";
 import {
   createDefect,
   updateDefect,
@@ -69,6 +79,14 @@ export type BoardDefect = {
 // label = "Company — Department" (or team name), built server-side.
 type SubCon = { id: string; label: string };
 
+// Active, project-scoped Defect Types for the Quick Add dropdown.
+export type DefectTypeOption = {
+  id: string;
+  name: string;
+  isOthers: boolean;
+  defaultSubConId: string | null;
+};
+
 // Native <select>. The option popup is drawn by the browser, so we explicitly
 // color the options to keep the dropdown readable in dark mode.
 const selectClass =
@@ -77,13 +95,21 @@ const selectClass =
 export function DrawingBoard({
   projectId,
   drawing,
+  drawingLabel = "",
+  isMaster = false,
   defects,
+  defectTypes,
   subCons,
   initialDefectId = null,
 }: {
   projectId: string;
   drawing: { id: string; imageUrl: string } | null;
+  /** "Project — Unit" line shown in the Quick Add form. */
+  drawingLabel?: string;
+  /** Master Layout is for picking a unit — no defect placement on it. */
+  isMaster?: boolean;
   defects: BoardDefect[];
+  defectTypes: DefectTypeOption[];
   subCons: SubCon[];
   initialDefectId?: string | null;
 }) {
@@ -94,7 +120,10 @@ export function DrawingBoard({
     <Board
       projectId={projectId}
       drawing={drawing}
+      drawingLabel={drawingLabel}
+      isMaster={isMaster}
       defects={defects}
+      defectTypes={defectTypes}
       subCons={subCons}
       initialDefectId={initialDefectId}
     />
@@ -140,6 +169,12 @@ function UploadDrawing({ projectId }: { projectId: string }) {
       >
         <input type="hidden" name="projectId" value={projectId} />
         <Input
+          name="name"
+          maxLength={60}
+          placeholder="Layout Name, e.g. A-11 (optional)"
+          className="max-w-xs"
+        />
+        <Input
           type="file"
           name="file"
           accept="image/*"
@@ -166,13 +201,19 @@ function UploadDrawing({ projectId }: { projectId: string }) {
 function Board({
   projectId,
   drawing,
+  drawingLabel,
+  isMaster,
   defects,
+  defectTypes,
   subCons,
   initialDefectId,
 }: {
   projectId: string;
   drawing: { id: string; imageUrl: string };
+  drawingLabel: string;
+  isMaster: boolean;
   defects: BoardDefect[];
+  defectTypes: DefectTypeOption[];
   subCons: SubCon[];
   initialDefectId: string | null;
 }) {
@@ -183,6 +224,13 @@ function Board({
   const [createPos, setCreatePos] = useState<{ x: number; y: number } | null>(
     null,
   );
+  // Quick Add selections. Controlled so a Defect Type's default Sub-Con can be
+  // preselected, and both survive between defects — registering 30–100 similar
+  // defects in a row needs zero re-typing.
+  const [typeId, setTypeId] = useState("");
+  const [assigneeId, setAssigneeId] = useState("");
+  const [showNote, setShowNote] = useState(false);
+  const selectedType = defectTypes.find((t) => t.id === typeId) ?? null;
   // Store the id, not the object, so the open dialog reflects fresh server data
   // (new photos, status changes) after router.refresh().
   // Seeded from ?defectId= so links from /main/defects open the pin directly.
@@ -190,6 +238,8 @@ function Board({
   const selected = defects.find((d) => d.id === selectedId) ?? null;
   const [reopenReason, setReopenReason] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Synchronous in-flight flag for the Quick Add submit (see submitCreate).
+  const submittingRef = useRef(false);
 
   // Photos for the NEW defect being created. Held in state (not form fields)
   // so the camera can be opened straight from the pin-placement tap, each
@@ -230,13 +280,25 @@ function Board({
   function closeCreate() {
     setCreatePos(null);
     createPhotos.clearFiles();
+    setShowNote(false);
     setError(null);
+  }
+
+  // Selecting a Defect Type preselects its default Sub-Con (still changeable).
+  function handleTypeChange(newTypeId: string) {
+    setTypeId(newTypeId);
+    const t = defectTypes.find((dt) => dt.id === newTypeId);
+    if (t?.defaultSubConId && subCons.some((s) => s.id === t.defaultSubConId)) {
+      setAssigneeId(t.defaultSubConId);
+    }
   }
 
   function submitCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    // pending guard: a double-tap on Add defect must not create two defects.
-    if (!createPos || pending) return;
+    // Duplicate-submit guard. The ref flips SYNCHRONOUSLY: useTransition's
+    // `pending` only turns true on the next render, so two taps in the same
+    // frame would both pass a pending-only check and create two defects.
+    if (!createPos || pending || submittingRef.current) return;
     const fd = new FormData(e.currentTarget);
     // Optional photos travel from state (captured via the hidden camera /
     // gallery inputs), re-checked here before the Server Action body limit
@@ -259,13 +321,23 @@ function Board({
     fd.set("x", String(createPos.x));
     fd.set("y", String(createPos.y));
     setError(null);
+    submittingRef.current = true;
     startTransition(async () => {
-      const res = await createDefect(fd);
+      const res = await createDefect(fd).finally(() => {
+        submittingRef.current = false;
+      });
       if (res.error) {
         // Keep the dialog (and pin + photo) so the user can fix and retry.
         setError(res.error);
       } else {
+        // Rapid continuous registration: close the form, confirm quietly,
+        // stay on this unit layout (zoom/pan untouched — the viewer keeps its
+        // client state through router.refresh()) and re-arm place mode so the
+        // very next tap adds the next defect. Defect type + Sub-Con stay
+        // selected for the next entry.
         closeCreate();
+        setMode("place");
+        toast.success("Defect added", { duration: 1500 });
         router.refresh();
       }
     });
@@ -388,106 +460,138 @@ function Board({
           title: `#${d.pinNumber} ${d.title}`,
         }))}
         toolbarStart={
-          <>
-            <Button
-              type="button"
-              size="sm"
-              className="max-md:h-11 max-md:px-3"
-              variant={mode === "view" ? "default" : "outline"}
-              onClick={() => setMode("view")}
-            >
-              <Hand className="h-4 w-4" />
-              View / Move
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              className="max-md:h-11 max-md:px-3"
-              variant={mode === "place" ? "default" : "outline"}
-              onClick={() => setMode(mode === "place" ? "view" : "place")}
-            >
-              <MapPin className="h-4 w-4" />
-              Add Defect Pin
-            </Button>
-          </>
+          !isMaster && (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                className="max-md:h-11 max-md:px-3"
+                variant={mode === "view" ? "default" : "outline"}
+                onClick={() => setMode("view")}
+              >
+                <Hand className="h-4 w-4" />
+                View / Move
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="max-md:h-11 max-md:px-3"
+                variant={mode === "place" ? "default" : "outline"}
+                onClick={() => setMode(mode === "place" ? "view" : "place")}
+              >
+                <MapPin className="h-4 w-4" />
+                Add Defect
+              </Button>
+            </>
+          )
         }
       />
-      <p className="text-sm text-muted-foreground">
-        {mode === "place"
-          ? "Zoom to the affected area, then click the exact defect location. Press Escape or Add Defect Pin again to cancel."
-          : "Drag to pan and zoom in for detail. Click a pin to open the defect. Use Add Defect Pin to add a new one."}
+      <p className="text-sm text-muted-foreground max-md:hidden">
+        {isMaster
+          ? "This is the Master Layout. Pick a Unit/Floor Layout below to register defects."
+          : mode === "place"
+            ? "Tap the exact defect location. Press Escape or Add Defect again to cancel."
+            : "Drag to pan, zoom for detail, tap a pin to open the defect. Use Add Defect to add a new one."}
       </p>
 
-      {/* Create defect dialog */}
+      {/* Quick Add Defect — compact form; bottom sheet on phones so the
+          keyboard never hides the Submit button (the sheet scrolls). */}
       <Dialog
         open={createPos !== null}
         onOpenChange={(o) => !o && closeCreate()}
       >
-        <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-h-[85dvh] overflow-y-auto max-sm:top-auto max-sm:bottom-0 max-sm:left-0 max-sm:max-w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-b-none">
           <DialogHeader>
-            <DialogTitle>Add defect</DialogTitle>
-            <DialogDescription>
-              Pin placed on the floor plan. Fill in the details below.
-            </DialogDescription>
+            <DialogTitle>Add Defect</DialogTitle>
+            {drawingLabel && (
+              <DialogDescription>{drawingLabel}</DialogDescription>
+            )}
           </DialogHeader>
-          <form onSubmit={submitCreate} className="space-y-4">
+          <form onSubmit={submitCreate} className="space-y-3">
             <div className="space-y-2">
-              <Label htmlFor="title">Title *</Label>
-              <Input id="title" name="title" required placeholder="e.g. Cracked tile" />
+              <Label htmlFor="defectTypeId">Defect *</Label>
+              <select
+                id="defectTypeId"
+                name="defectTypeId"
+                required
+                value={typeId}
+                onChange={(e) => handleTypeChange(e.target.value)}
+                className={selectClass}
+              >
+                <option value="" disabled>
+                  Select defect…
+                </option>
+                {defectTypes.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
             </div>
+            {selectedType?.isOthers && (
+              <div className="space-y-2">
+                <Label htmlFor="customName">Defect Name *</Label>
+                <Input
+                  id="customName"
+                  name="customName"
+                  required
+                  maxLength={80}
+                  placeholder="Short defect name"
+                />
+              </div>
+            )}
             <div className="space-y-2">
-              <Label htmlFor="trade">Category / Trade *</Label>
-              <Input id="trade" name="trade" required placeholder="e.g. Tiling" />
+              <Label htmlFor="assignedToId">Assigned Sub-Con / Trade</Label>
+              <select
+                id="assignedToId"
+                name="assignedToId"
+                value={assigneeId}
+                onChange={(e) => setAssigneeId(e.target.value)}
+                className={selectClass}
+              >
+                <option value="">Others / Unassigned</option>
+                {subCons.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea id="description" name="description" rows={2} placeholder="Optional" />
-            </div>
-            <div className="space-y-2">
-              <Label>Defect Photos</Label>
-              <MultiPhotoInput
-                items={createPhotos.items}
-                onAddFiles={createPhotos.addFiles}
-                onRemove={createPhotos.removeFile}
-                cameraInputRef={cameraInputRef}
+            <MultiPhotoInput
+              items={createPhotos.items}
+              onAddFiles={createPhotos.addFiles}
+              onRemove={createPhotos.removeFile}
+              cameraInputRef={cameraInputRef}
+            />
+            <button
+              type="button"
+              onClick={() => setShowNote((v) => !v)}
+              className="flex min-h-9 items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            >
+              {showNote ? (
+                <ChevronUp className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+              Add note
+            </button>
+            {showNote && (
+              <Textarea
+                id="description"
+                name="description"
+                rows={2}
+                placeholder="Description / note (optional)"
               />
-              <p className="text-xs text-muted-foreground">
-                Take or upload defect photos. {UPLOAD_HELP_TEXT}, up to 5 photos.
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="priority">Priority</Label>
-                <select id="priority" name="priority" defaultValue="MEDIUM" className={selectClass}>
-                  <option value="LOW">Low</option>
-                  <option value="MEDIUM">Medium</option>
-                  <option value="HIGH">High</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="assignedToId">Assign Sub-Con</Label>
-                <select id="assignedToId" name="assignedToId" defaultValue="" className={selectClass}>
-                  <option value="">Unassigned</option>
-                  {subCons.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+            )}
             {error && <p className="text-sm text-destructive">{error}</p>}
             <DialogFooter>
               <Button
-                type="button"
-                variant="outline"
-                onClick={closeCreate}
+                type="submit"
+                disabled={pending}
+                className="w-full max-sm:h-12 sm:w-auto"
               >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={pending}>
                 {pending && <Loader2 className="h-4 w-4 animate-spin" />}
-                Add defect
+                Save Defect
               </Button>
             </DialogFooter>
           </form>

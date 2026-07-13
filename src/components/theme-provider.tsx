@@ -76,13 +76,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const setTheme = useCallback((next: Theme) => {
     setThemeState(next);
+    // Resolve in the event handler (not the effect) so the effect below only
+    // updates external systems (DOM class + localStorage).
+    setResolvedTheme(resolveTheme(next));
   }, []);
 
   // Persist + apply whenever the selection changes.
   useEffect(() => {
-    const resolved = resolveTheme(theme);
-    setResolvedTheme(resolved);
-    applyTheme(resolved);
+    applyTheme(resolveTheme(theme));
     try {
       localStorage.setItem(STORAGE_KEY, theme);
     } catch {

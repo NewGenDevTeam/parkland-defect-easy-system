@@ -63,6 +63,8 @@ model User {
   ownedProjects   Project[] @relation("ProjectOwner")
   assignedDefects Defect[]  @relation("AssignedSubCon")
   createdDefects  Defect[]  @relation("DefectCreator")
+  // Defect Types that preselect this Sub-Con in the Quick Add form.
+  defaultForDefectTypes DefectType[] @relation("DefectTypeDefaultSubCon")
 
   @@index([mainConId])
 }
@@ -78,14 +80,18 @@ model Project {
   ownerId String
   owner   User   @relation("ProjectOwner", fields: [ownerId], references: [id])
 
-  drawings Drawing[]
-  defects  Defect[]
+  drawings    Drawing[]
+  defects     Defect[]
+  defectTypes DefectType[]
 }
 
 model Drawing {
   id        String   @id @default(cuid())
   name      String
   imageUrl  String
+  // At most one Master Layout per project (overview plan used to pick a
+  // Unit/Floor Layout). Defects are registered on unit layouts.
+  isMaster  Boolean  @default(false)
   createdAt DateTime @default(now())
 
   projectId String
@@ -94,8 +100,34 @@ model Drawing {
   defects Defect[]
 }
 
+// Project-scoped, pre-registered defect names shown in the Quick Add dropdown
+// (Crack, Water Leakage, …). Maintained by the Main-Con; rows are deactivated,
+// never deleted, so existing defects keep their reference for reporting.
+model DefectType {
+  id        String   @id @default(cuid())
+  name      String
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  // The "Others" row: selecting it reveals a short custom defect name field.
+  isOthers  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  // Optional default Sub-Con/Trade preselected when this type is chosen.
+  defaultSubConId String?
+  defaultSubCon   User?   @relation("DefectTypeDefaultSubCon", fields: [defaultSubConId], references: [id])
+
+  defects Defect[]
+
+  @@index([projectId])
+}
+
 model Defect {
   id          String       @id @default(cuid())
+  // Display name: the DefectType name, or the custom defect name when the
+  // "Others" type is selected. Kept alongside defectTypeId for compatibility.
   title       String
   description String?
   trade       String? // trade / category, e.g. Plumbing, Electrical
@@ -113,6 +145,11 @@ model Defect {
   drawingId String
   drawing   Drawing @relation(fields: [drawingId], references: [id], onDelete: Cascade)
 
+  // Structured defect classification (nullable so legacy rows stay valid;
+  // the backfill script links every existing defect to a type).
+  defectTypeId String?
+  defectType   DefectType? @relation(fields: [defectTypeId], references: [id])
+
   createdById String
   createdBy   User   @relation("DefectCreator", fields: [createdById], references: [id])
 
@@ -123,6 +160,7 @@ model Defect {
 
   @@index([projectId])
   @@index([assignedToId])
+  @@index([defectTypeId])
 }
 
 model Photo {

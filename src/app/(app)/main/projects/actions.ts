@@ -11,6 +11,7 @@ import {
   deleteUploadedImages,
 } from "@/lib/upload";
 import { NO_FILES_ERROR } from "@/lib/upload-limits";
+import { defaultDefectTypeSeed } from "@/lib/defect-type-defaults";
 import {
   Priority,
   DefectStatus,
@@ -37,6 +38,8 @@ export async function createProject(
 
   // New projects always start as ACTIVE. Status can be changed later; there is
   // no reason to create a project that is already Completed.
+  // The default Defect Type list is seeded in the same write so the Quick Add
+  // dropdown is never empty on a fresh project.
   const project = await prisma.project.create({
     data: {
       name,
@@ -44,6 +47,7 @@ export async function createProject(
       description: description || null,
       status: ProjectStatus.ACTIVE,
       ownerId: user.userId,
+      defectTypes: { create: defaultDefectTypeSeed() },
     },
   });
 
@@ -59,23 +63,43 @@ export async function uploadDrawing(
   _prev: { error?: string },
   formData: FormData,
 ): Promise<{ error?: string }> {
-  await requireRole("MAIN_CON");
+  const user = await requireRole("MAIN_CON");
 
   const projectId = String(formData.get("projectId") ?? "");
-  const project = await prisma.project.findUnique({ where: { id: projectId } });
+  // Layout name (e.g. "A-11") shown in the unit selector; falls back to the
+  // uploaded file name. isMaster marks the project's single overview plan.
+  const name = String(formData.get("name") ?? "").trim();
+  const isMaster = formData.get("isMaster") === "on";
+
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, ownerId: user.userId },
+  });
   if (!project) return { error: "Project not found." };
 
   const saved = await saveUploadedImage(formData.get("file"));
   if (saved.error) return { error: saved.error };
 
   try {
-    await prisma.drawing.create({
-      data: {
-        name: (formData.get("file") as File).name,
-        imageUrl: saved.url!,
-        projectId,
-      },
-    });
+    // One optional Master Layout per project: marking a new one demotes any
+    // previous master to a regular unit layout (its defects are untouched).
+    await prisma.$transaction([
+      ...(isMaster
+        ? [
+            prisma.drawing.updateMany({
+              where: { projectId, isMaster: true },
+              data: { isMaster: false },
+            }),
+          ]
+        : []),
+      prisma.drawing.create({
+        data: {
+          name: name || (formData.get("file") as File).name,
+          imageUrl: saved.url!,
+          isMaster,
+          projectId,
+        },
+      }),
+    ]);
   } catch {
     // DB write failed after the file hit disk — remove the orphan file.
     await deleteUploadedImage(saved.url!);
@@ -99,25 +123,43 @@ export async function createDefect(
   const drawingId = String(formData.get("drawingId") ?? "");
   const x = Number(formData.get("x"));
   const y = Number(formData.get("y"));
-  const title = String(formData.get("title") ?? "").trim();
+  const defectTypeId = String(formData.get("defectTypeId") ?? "");
+  const customName = String(formData.get("customName") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
-  const trade = String(formData.get("trade") ?? "").trim();
-  const priority = String(formData.get("priority") ?? "");
+  // Optional; the Quick Add form omits it and defaults to MEDIUM.
+  const priority = String(formData.get("priority") ?? "") || Priority.MEDIUM;
   const assignedToId = String(formData.get("assignedToId") ?? "") || null;
 
-  if (!title) return { error: "Title is required." };
-  if (!trade) return { error: "Category / trade is required." };
+  if (!defectTypeId) return { error: "Please select a defect." };
   if (!(priority in Priority)) return { error: "Invalid priority." };
   if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1 || y < 0 || y > 1) {
     return { error: "Invalid pin position." };
   }
 
+  // Ownership: the defect must land on a drawing of a project this Main-Con owns.
   const drawing = await prisma.drawing.findFirst({
-    where: { id: drawingId, projectId },
+    where: { id: drawingId, projectId, project: { ownerId: user.userId } },
   });
   if (!drawing) return { error: "Upload a floor plan before adding defects." };
 
+  // The defect type must be an ACTIVE type of this project. "Others" requires
+  // a short custom defect name; regular types use their own name as the title.
+  const defectType = await prisma.defectType.findFirst({
+    where: { id: defectTypeId, projectId, active: true },
+    select: { id: true, name: true, isOthers: true },
+  });
+  if (!defectType) return { error: "Please select a valid defect." };
+  if (defectType.isOthers && !customName) {
+    return { error: "Please enter a short defect name for Others." };
+  }
+  if (customName.length > 80) {
+    return { error: "Custom defect name must be 80 characters or less." };
+  }
+  const title = defectType.isOthers ? customName : defectType.name;
+
   // New assignments must go to an ACTIVE Sub-Con owned by this Main-Con.
+  // The Sub-Con's department doubles as the stored trade label.
+  let trade: string | null = null;
   if (assignedToId) {
     const subCon = await prisma.user.findFirst({
       where: {
@@ -126,9 +168,10 @@ export async function createDefect(
         mainConId: user.userId,
         active: true,
       },
-      select: { id: true },
+      select: { id: true, department: true },
     });
     if (!subCon) return { error: "Invalid Sub-Con selected." };
+    trade = subCon.department;
   }
 
   // Optional defect photos (up to 5): ALL are validated before ANY is saved,
@@ -145,6 +188,7 @@ export async function createDefect(
         title,
         description: description || null,
         trade,
+        defectTypeId: defectType.id,
         priority: priority as Priority,
         status: assignedToId ? DefectStatus.ASSIGNED : DefectStatus.NEW,
         x,
