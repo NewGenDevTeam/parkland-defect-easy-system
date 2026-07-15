@@ -43,10 +43,20 @@ export default async function SubDefectDetailPage({
 
   const defectPhotos = defect.photos
     .filter((p) => p.type === "DEFECT")
-    .map((p) => ({ id: p.id, url: p.url }));
+    .map((p) => ({
+      id: p.id,
+      url: p.url,
+      media: p.media as "IMAGE" | "VIDEO",
+      createdAt: p.createdAt.toISOString(),
+    }));
   const completionPhotos = defect.photos
     .filter((p) => p.type === "COMPLETION")
-    .map((p) => ({ id: p.id, url: p.url }));
+    .map((p) => ({
+      id: p.id,
+      url: p.url,
+      media: p.media as "IMAGE" | "VIDEO",
+      createdAt: p.createdAt.toISOString(),
+    }));
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">

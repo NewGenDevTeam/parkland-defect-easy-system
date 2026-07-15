@@ -40,6 +40,11 @@ enum PhotoType {
   COMPLETION // proof of fix (uploaded by sub-con)
 }
 
+enum MediaType {
+  IMAGE
+  VIDEO // short video evidence, uploaded alongside photos
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -165,8 +170,13 @@ model Defect {
 
 model Photo {
   id        String    @id @default(cuid())
+  // Images: /uploads/<name>. Videos: /uploads/videos/<defectId>/<name>
+  // (served with HTTP Range support so players can seek).
   url       String
   type      PhotoType @default(DEFECT)
+  // Whether the stored file is an image or a short video. Defaults to IMAGE
+  // so every existing photo row keeps working unchanged.
+  media     MediaType @default(IMAGE)
   createdAt DateTime  @default(now())
 
   defectId String

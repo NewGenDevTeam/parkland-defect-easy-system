@@ -102,10 +102,20 @@ export default async function ProjectDetailPage({
     createdAt: d.createdAt.toISOString(),
     defectPhotos: d.photos
       .filter((p) => p.type === "DEFECT")
-      .map((p) => ({ id: p.id, url: p.url })),
+      .map((p) => ({
+        id: p.id,
+        url: p.url,
+        media: p.media as "IMAGE" | "VIDEO",
+        createdAt: p.createdAt.toISOString(),
+      })),
     completionPhotos: d.photos
       .filter((p) => p.type === "COMPLETION")
-      .map((p) => ({ id: p.id, url: p.url })),
+      .map((p) => ({
+        id: p.id,
+        url: p.url,
+        media: p.media as "IMAGE" | "VIDEO",
+        createdAt: p.createdAt.toISOString(),
+      })),
   }));
 
   // Defect count per unit for the Master Layout unit picker.

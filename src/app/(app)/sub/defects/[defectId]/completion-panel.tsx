@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Camera, CheckCircle2, Loader2, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import {
   usePhotoFiles,
 } from "@/components/photo-file-input";
 import { PhotoGrid, type GridPhoto } from "@/components/photo-grid";
+import { ShortVideoInput } from "@/components/short-video-input";
 import {
   checkTotalUploadSize,
   NO_FILES_ERROR,
@@ -45,6 +46,10 @@ export function CompletionPanel({
   // capture, gallery can add several at once. Client-side type/size/limit
   // checks live in the hook; the server re-validates authoritatively.
   const photos = usePhotoFiles({ onError: setError });
+  // Parent-owned refs for the hidden video inputs, clicked from the combined
+  // Camera/Gallery action sheets in MultiPhotoInput.
+  const videoCamRef = useRef<HTMLInputElement>(null);
+  const videoGalRef = useRef<HTMLInputElement>(null);
 
   function submitPhotos(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -104,6 +109,19 @@ export function CompletionPanel({
               items={photos.items}
               onAddFiles={photos.addFiles}
               onRemove={photos.removeFile}
+              videoActions={{
+                recordVideo: () => videoCamRef.current?.click(),
+                chooseVideo: () => videoGalRef.current?.click(),
+              }}
+              videoSlot={
+                <ShortVideoInput
+                  defectId={defectId}
+                  externalTriggers={{
+                    cameraRef: videoCamRef,
+                    galleryRef: videoGalRef,
+                  }}
+                />
+              }
             />
             <p className="text-xs text-muted-foreground">
               Take or upload completion photos. {UPLOAD_HELP_TEXT}, up to 5

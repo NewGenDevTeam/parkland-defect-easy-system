@@ -114,9 +114,12 @@ export async function uploadDrawing(
 
 // Takes FormData (not a plain object) so the optional defect photo file can
 // travel in the same request as the defect fields.
+// Returns the new defect's id on success so the client can attach a short
+// video afterwards (deferred upload: the video needs the defectId, so it is
+// uploaded to /api/defects/<id>/videos only AFTER the defect exists).
 export async function createDefect(
   formData: FormData,
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; defectId?: string }> {
   const user = await requireRole("MAIN_CON");
 
   const projectId = String(formData.get("projectId") ?? "");
@@ -182,8 +185,9 @@ export async function createDefect(
 
   // Nested create keeps defect + photos in a single atomic write: either all
   // rows exist afterwards or none do.
+  let defectId: string;
   try {
-    await prisma.defect.create({
+    const created = await prisma.defect.create({
       data: {
         title,
         description: description || null,
@@ -208,7 +212,9 @@ export async function createDefect(
             }
           : {}),
       },
+      select: { id: true },
     });
+    defectId = created.id;
   } catch {
     // DB write failed after the photos hit disk — remove the orphan files.
     await deleteUploadedImages(photoUrls);
@@ -216,7 +222,7 @@ export async function createDefect(
   }
 
   revalidatePath(`/main/projects/${projectId}`);
-  return {};
+  return { defectId };
 }
 
 export async function updateDefect(input: {

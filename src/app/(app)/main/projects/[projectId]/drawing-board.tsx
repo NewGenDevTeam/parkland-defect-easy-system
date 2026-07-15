@@ -4,14 +4,20 @@ import { useActionState, useEffect, useRef, useState, useTransition } from "reac
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
+  Camera,
   ChevronDown,
+  ChevronLeft,
   ChevronUp,
+  FilePlus2,
   Hand,
+  Image as ImageIcon,
+  Images,
   ImageUp,
   ImagePlus,
   Loader2,
   MapPin,
   UserRound,
+  Video,
 } from "lucide-react";
 import {
   createDefect,
@@ -28,6 +34,8 @@ import {
   usePhotoFiles,
 } from "@/components/photo-file-input";
 import { FloorPlanViewer } from "@/components/floor-plan-viewer";
+import { ShortVideoInput, VideoPicker } from "@/components/short-video-input";
+import { checkVideoFile, VIDEO_ACCEPT } from "@/lib/video-limits";
 import {
   checkImageFile,
   checkTotalUploadSize,
@@ -230,6 +238,11 @@ function Board({
   const [typeId, setTypeId] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
   const [showNote, setShowNote] = useState(false);
+  // Note + custom defect name are controlled so they survive the form step
+  // unmounting during a Change Media round-trip (both still submit through
+  // the form's FormData via their name attributes).
+  const [note, setNote] = useState("");
+  const [customName, setCustomName] = useState("");
   const selectedType = defectTypes.find((t) => t.id === typeId) ?? null;
   // Store the id, not the object, so the open dialog reflects fresh server data
   // (new photos, status changes) after router.refresh().
@@ -241,13 +254,41 @@ function Board({
   // Synchronous in-flight flag for the Quick Add submit (see submitCreate).
   const submittingRef = useRef(false);
 
+  // Add Defect dialog steps. Placing a pin no longer opens the camera
+  // directly: the user first picks a media TYPE (Photo / Video), then a
+  // SOURCE (camera / gallery), and only then sees the defect form. All steps
+  // live inside the ONE dialog so the pin position and form state survive.
+  const [createStep, setCreateStep] = useState<
+    "media-type" | "media-source" | "form"
+  >("media-type");
+  const [mediaType, setMediaType] = useState<"photo" | "video" | null>(null);
+  // Snapshot of the selection when entering the source step, so we advance to
+  // the form only when a NEW pick lands (not because media already existed
+  // after a Change Media round-trip).
+  const sourceBaseline = useRef<{ photos: number; video: File | null }>({
+    photos: 0,
+    video: null,
+  });
   // Photos for the NEW defect being created. Held in state (not form fields)
-  // so the camera can be opened straight from the pin-placement tap, each
-  // capture APPENDS to the list, and the selection survives leaving/returning
-  // to Safari. Previews are local object URLs — never the /uploads URL, which
-  // only exists after saving.
+  // so the selection survives leaving/returning to Safari. Previews are local
+  // object URLs — never the /uploads URL, which only exists after saving.
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  // Gallery photo input for the media-source step (the form's own gallery
+  // input doesn't exist yet at that moment).
+  const createGalleryRef = useRef<HTMLInputElement>(null);
   const createPhotos = usePhotoFiles({ onError: setError });
+  // Optional short video for the NEW defect. Deferred upload: the video needs
+  // the defectId, so it is sent to /api/defects/<id>/videos only AFTER the
+  // defect has been created (never before).
+  const [createVideo, setCreateVideo] = useState<File | null>(null);
+  // Hidden video inputs. The create pair is board-mounted (always available,
+  // clicked from the Add Defect media-source step); the detail pair is owned
+  // by the detail dialog's VideoPicker and clicked from its combined
+  // Camera/Gallery action sheets in MultiPhotoInput.
+  const createVideoCamRef = useRef<HTMLInputElement>(null);
+  const createVideoGalRef = useRef<HTMLInputElement>(null);
+  const detailVideoCamRef = useRef<HTMLInputElement>(null);
+  const detailVideoGalRef = useRef<HTMLInputElement>(null);
   // Additional photos for an EXISTING defect (detail dialog form).
   const detailPhotos = usePhotoFiles({ onError: setError });
   // Decides whether the camera opens automatically and Take Photo shows.
@@ -266,13 +307,14 @@ function Board({
   function handlePlacePin(x: number, y: number) {
     setError(null);
     createPhotos.clearFiles();
+    setCreateVideo(null);
     setCreatePos({ x, y });
+    // The Add Defect dialog opens on the Choose Media Type step — never
+    // straight into the camera. The user picks Photo or Video first.
+    setCreateStep("media-type");
+    setMediaType(null);
     // Auto-exit place mode; the Add Defect modal opens for this position.
     setMode("view");
-    // Camera-first mobile flow: open the phone camera from the SAME user tap
-    // (iOS only allows programmatic file-input clicks inside a user gesture).
-    // Desktop (fine pointer) just shows the form with its photo buttons.
-    if (isCoarse) cameraInputRef.current?.click();
   }
 
   // Closing the Add Defect dialog (Cancel / backdrop / after save) removes
@@ -280,8 +322,57 @@ function Board({
   function closeCreate() {
     setCreatePos(null);
     createPhotos.clearFiles();
+    setCreateVideo(null);
+    setCreateStep("media-type");
+    setMediaType(null);
     setShowNote(false);
+    setNote("");
+    setCustomName("");
     setError(null);
+  }
+
+  // Step 1 → Step 2: remember the current selection so the auto-advance
+  // effect below only fires on a NEW pick made from this step.
+  function goToSource(type: "photo" | "video") {
+    setError(null);
+    setMediaType(type);
+    sourceBaseline.current = {
+      photos: createPhotos.items.length,
+      video: createVideo,
+    };
+    setCreateStep("media-source");
+  }
+
+  // Advance to the defect form once media actually lands while on the source
+  // step (the native camera/picker returns asynchronously, and a cancelled or
+  // rejected pick must NOT advance).
+  useEffect(() => {
+    if (createStep !== "media-source") return;
+    const base = sourceBaseline.current;
+    if (
+      createPhotos.items.length > base.photos ||
+      (createVideo !== null && createVideo !== base.video)
+    ) {
+      setCreateStep("form");
+    }
+  }, [createStep, createPhotos.items.length, createVideo]);
+
+  // Video pick for the NEW defect (board-owned inputs, mounted below so they
+  // exist before the dialog's form step does). Validated here; invalid picks
+  // keep the current selection and surface the error inside the dialog.
+  function handleCreateVideoPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const input = e.currentTarget;
+    const picked = input.files?.[0];
+    // Reset so recording/choosing the same file again fires onChange again.
+    input.value = "";
+    if (!picked) return; // camera/picker cancelled — keep current selection
+    const invalid = checkVideoFile(picked);
+    if (invalid) {
+      setError(invalid);
+      return;
+    }
+    setError(null);
+    setCreateVideo(picked);
   }
 
   // Selecting a Defect Type preselects its default Sub-Con (still changeable).
@@ -315,6 +406,15 @@ function Board({
       setError(totalErr);
       return;
     }
+    // Optional short video: validated up front, but uploaded only AFTER the
+    // defect exists (the upload URL needs the new defectId).
+    if (createVideo) {
+      const vErr = checkVideoFile(createVideo);
+      if (vErr) {
+        setError(vErr);
+        return;
+      }
+    }
     appendPhotos(fd, createPhotos.items);
     fd.set("projectId", projectId);
     fd.set("drawingId", drawing.id);
@@ -330,6 +430,33 @@ function Board({
         // Keep the dialog (and pin + photo) so the user can fix and retry.
         setError(res.error);
       } else {
+        // Deferred video upload, now that the defect id exists. The defect is
+        // already saved: a video failure must not roll it back or reopen the
+        // form — surface it as a toast and let the user retry from the
+        // defect detail dialog. Upload never changes the defect status.
+        if (createVideo && res.defectId) {
+          try {
+            const vfd = new FormData();
+            vfd.set("video", createVideo);
+            const up = await fetch(`/api/defects/${res.defectId}/videos`, {
+              method: "POST",
+              body: vfd,
+            });
+            if (!up.ok) {
+              const data = (await up
+                .json()
+                .catch(() => ({}))) as { error?: string };
+              toast.error(
+                data.error ??
+                  "Defect saved, but the video upload failed. Open the defect to try again.",
+              );
+            }
+          } catch {
+            toast.error(
+              "Defect saved, but the video upload failed. Open the defect to try again.",
+            );
+          }
+        }
         // Rapid continuous registration: close the form, confirm quietly,
         // stay on this unit layout (zoom/pan untouched — the viewer keeps its
         // client state through router.refresh()) and re-arm place mode so the
@@ -420,11 +547,14 @@ function Board({
 
   return (
     <div className="space-y-3">
-      {/* Always-mounted hidden camera input for the Add Defect flow. Kept
-          outside the dialog so the camera can open in the same tap that
-          places the pin (the dialog's own inputs don't exist yet at that
-          moment). One capture per launch; each capture APPENDS to the list.
-          Selecting a photo only updates state — never submits or navigates. */}
+      {/* Always-mounted hidden inputs for the Add Defect flow. Kept outside
+          the dialog so they exist BEFORE the media-source step renders and can
+          be clicked inside the user's tap (iOS only allows programmatic
+          file-input clicks inside a gesture). Camera captures one photo per
+          launch; each capture APPENDS to the list. Video keeps two SEPARATE
+          inputs (camera w/ capture, gallery without) — on some mobile
+          browsers `capture` forces the camera and blocks Gallery selection.
+          Selecting media only updates state — never submits or navigates. */}
       <input
         ref={cameraInputRef}
         type="file"
@@ -439,6 +569,39 @@ function Board({
           // Reset so retaking the same photo fires onChange again.
           input.value = "";
         }}
+      />
+      <input
+        ref={createGalleryRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        tabIndex={-1}
+        aria-hidden="true"
+        onChange={(e) => {
+          const input = e.currentTarget;
+          createPhotos.addFiles(input.files);
+          input.value = "";
+        }}
+      />
+      <input
+        ref={createVideoCamRef}
+        type="file"
+        accept={VIDEO_ACCEPT}
+        capture="environment"
+        className="hidden"
+        tabIndex={-1}
+        aria-hidden="true"
+        onChange={handleCreateVideoPick}
+      />
+      <input
+        ref={createVideoGalRef}
+        type="file"
+        accept={VIDEO_ACCEPT}
+        className="hidden"
+        tabIndex={-1}
+        aria-hidden="true"
+        onChange={handleCreateVideoPick}
       />
       <FloorPlanViewer
         imageUrl={drawing.imageUrl}
@@ -507,6 +670,132 @@ function Board({
               <DialogDescription>{drawingLabel}</DialogDescription>
             )}
           </DialogHeader>
+
+          {/* Step 1 — Choose Media Type. No form fields yet; the pin position
+              (createPos) is untouched by any step change. */}
+          {createStep === "media-type" && (
+            <div className="space-y-3">
+              <p className="text-sm font-medium">Choose Media Type</p>
+              <div className="flex gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-20 flex-1 flex-col gap-1.5"
+                  onClick={() => goToSource("photo")}
+                >
+                  <ImageIcon className="size-6" />
+                  Photo
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-20 flex-1 flex-col gap-1.5"
+                  onClick={() => goToSource("video")}
+                >
+                  <Video className="size-6" />
+                  Video
+                </Button>
+              </div>
+              {error && <p className="text-sm text-destructive">{error}</p>}
+              {/* Reached via Change Media (media already selected): Back
+                  returns to the form without losing anything. Fresh dialog:
+                  Cancel closes it (existing behaviour, pin removed). */}
+              {createPhotos.items.length > 0 || createVideo !== null ? (
+                <button
+                  type="button"
+                  onClick={() => setCreateStep("form")}
+                  className="flex min-h-9 items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Back
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={closeCreate}
+                  className="flex min-h-9 items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Step 2 — Choose Media Source. Each button just clicks the
+              matching board-mounted hidden input; the effect above moves to
+              the form once a pick lands. Take Photo / Record Video are
+              mobile-only (coarse pointer). */}
+          {createStep === "media-source" && (
+            <div className="space-y-3">
+              <p className="text-sm font-medium">
+                {mediaType === "photo" ? "Add Photo" : "Add Video"}
+              </p>
+              <div className="flex gap-3">
+                {mediaType === "photo" ? (
+                  <>
+                    {isCoarse && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-20 flex-1 flex-col gap-1.5"
+                        onClick={() => cameraInputRef.current?.click()}
+                      >
+                        <Camera className="size-6" />
+                        Take Photo
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-20 flex-1 flex-col gap-1.5"
+                      onClick={() => createGalleryRef.current?.click()}
+                    >
+                      <Images className="size-6" />
+                      Choose Photos
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    {isCoarse && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-20 flex-1 flex-col gap-1.5"
+                        onClick={() => createVideoCamRef.current?.click()}
+                      >
+                        <Video className="size-6" />
+                        Record Video
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-20 flex-1 flex-col gap-1.5"
+                      onClick={() => createVideoGalRef.current?.click()}
+                    >
+                      <FilePlus2 className="size-6" />
+                      Choose Video
+                    </Button>
+                  </>
+                )}
+              </div>
+              {error && <p className="text-sm text-destructive">{error}</p>}
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  setCreateStep("media-type");
+                }}
+                className="flex min-h-9 items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Back
+              </button>
+            </div>
+          )}
+
+          {/* Step 3 — the existing defect form. */}
+          {createStep === "form" && (
           <form onSubmit={submitCreate} className="space-y-3">
             <div className="space-y-2">
               <Label htmlFor="defectTypeId">Defect *</Label>
@@ -536,6 +825,8 @@ function Board({
                   name="customName"
                   required
                   maxLength={80}
+                  value={customName}
+                  onChange={(e) => setCustomName(e.target.value)}
                   placeholder="Short defect name"
                 />
               </div>
@@ -557,12 +848,38 @@ function Board({
                 ))}
               </select>
             </div>
-            <MultiPhotoInput
-              items={createPhotos.items}
-              onAddFiles={createPhotos.addFiles}
-              onRemove={createPhotos.removeFile}
-              cameraInputRef={cameraInputRef}
-            />
+            {/* Selected media preview. Photos keep the existing multi-photo
+                UI (thumbnails, remove, append more); a selected video shows
+                its filename chip. Media was picked in steps 1–2 — the
+                board-mounted hidden inputs feed the same state. */}
+            {(mediaType === "photo" || createPhotos.items.length > 0) && (
+              <MultiPhotoInput
+                items={createPhotos.items}
+                onAddFiles={createPhotos.addFiles}
+                onRemove={createPhotos.removeFile}
+                cameraInputRef={cameraInputRef}
+              />
+            )}
+            {(mediaType === "video" || createVideo !== null) && (
+              <VideoPicker
+                chipOnly
+                file={createVideo}
+                onSelect={setCreateVideo}
+                onRemove={() => setCreateVideo(null)}
+                disabled={pending}
+              />
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setError(null);
+                setCreateStep("media-type");
+              }}
+              className="flex min-h-9 items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Change Media
+            </button>
             <button
               type="button"
               onClick={() => setShowNote((v) => !v)}
@@ -580,6 +897,8 @@ function Board({
                 id="description"
                 name="description"
                 rows={2}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
                 placeholder="Description / note (optional)"
               />
             )}
@@ -595,6 +914,7 @@ function Board({
               </Button>
             </DialogFooter>
           </form>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -657,6 +977,19 @@ function Board({
                       items={detailPhotos.items}
                       onAddFiles={detailPhotos.addFiles}
                       onRemove={detailPhotos.removeFile}
+                      videoActions={{
+                        recordVideo: () => detailVideoCamRef.current?.click(),
+                        chooseVideo: () => detailVideoGalRef.current?.click(),
+                      }}
+                      videoSlot={
+                        <ShortVideoInput
+                          defectId={selected.id}
+                          externalTriggers={{
+                            cameraRef: detailVideoCamRef,
+                            galleryRef: detailVideoGalRef,
+                          }}
+                        />
+                      }
                     />
                     {detailPhotos.items.length > 0 && (
                       <Button type="submit" variant="outline" disabled={pending}>
