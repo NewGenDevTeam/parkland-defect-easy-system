@@ -6,17 +6,16 @@ import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PhotoGrid } from "@/components/photo-grid";
-import { FloorPlanViewer } from "@/components/floor-plan-viewer";
 import {
   STATUS_LABEL,
   PRIORITY_LABEL,
   STATUS_BADGE_CLASS,
   PRIORITY_BADGE_CLASS,
-  STATUS_PIN_COLOR,
   type DefectStatusValue,
   type PriorityValue,
 } from "@/lib/defect-ui";
 import { CompletionPanel } from "./completion-panel";
+import { DefectPinModal } from "./defect-pin-modal";
 
 export default async function SubDefectDetailPage({
   params,
@@ -31,7 +30,10 @@ export default async function SubDefectDetailPage({
     where: { id: defectId, assignedToId: user.userId },
     include: {
       project: { select: { name: true, location: true } },
-      drawing: { select: { imageUrl: true } },
+      drawing: { select: { name: true, imageUrl: true } },
+      assignedTo: {
+        select: { name: true, companyName: true, department: true },
+      },
       photos: { orderBy: { createdAt: "asc" } },
     },
   });
@@ -120,27 +122,34 @@ export default async function SubDefectDetailPage({
         </CardHeader>
         <CardContent className="space-y-2">
           {defect.drawing ? (
-            <>
-              {/* Read-only viewer: auto-zooms and centers on this defect's pin.
-                  Sub-Con can pan/zoom but cannot add or move pins. */}
-              <FloorPlanViewer
-                imageUrl={defect.drawing.imageUrl}
-                pins={[
-                  {
-                    id: defect.id,
-                    x: defect.x,
-                    y: defect.y,
-                    colorClass: STATUS_PIN_COLOR[status],
-                    title: defect.title,
-                  },
-                ]}
-                selectedPinId={defect.id}
-                focusPoint={{ x: defect.x, y: defect.y }}
-              />
-              <p className="text-xs text-muted-foreground">
-                Highlighted point shows the affected location.
-              </p>
-            </>
+            <DefectPinModal
+              imageUrl={defect.drawing.imageUrl}
+              defect={{
+                id: defect.id,
+                title: defect.title,
+                description: defect.description,
+                trade: defect.trade,
+                priority,
+                status,
+                x: defect.x,
+                y: defect.y,
+                reopenReason: defect.reopenReason,
+                createdAt: defect.createdAt.toISOString(),
+                projectName: defect.project.name,
+                projectLocation: defect.project.location,
+                drawingName: defect.drawing.name,
+                // Same "Company — Department" label the Main-Con board uses.
+                assignedToLabel: defect.assignedTo
+                  ? `${defect.assignedTo.companyName || defect.assignedTo.name}${
+                      defect.assignedTo.department
+                        ? ` — ${defect.assignedTo.department}`
+                        : ""
+                    }`
+                  : null,
+              }}
+              defectPhotos={defectPhotos}
+              completionPhotos={completionPhotos}
+            />
           ) : (
             <p className="text-sm text-muted-foreground">
               No Floor Plan available.

@@ -34,10 +34,16 @@ export function CompletionPanel({
   defectId,
   status,
   completionPhotos,
+  completeLabel = "Mark Completed",
+  stickyActions = false,
 }: {
   defectId: string;
   status: DefectStatusValue;
   completionPhotos: GridPhoto[];
+  /** Label for the primary complete button (the modal uses "Done"). */
+  completeLabel?: string;
+  /** Pin the workflow buttons to the bottom of a scrolling dialog. */
+  stickyActions?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -144,10 +150,19 @@ export function CompletionPanel({
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      {/* Workflow buttons */}
+      {/* Workflow buttons. Only one status block renders at a time; inside the
+          defect modal the wrapper sticks to the bottom of the scroll area so
+          the primary action stays visible. */}
+      <div
+        className={
+          stickyActions
+            ? "sticky bottom-0 -mx-4 border-t bg-popover px-4 py-3"
+            : undefined
+        }
+      >
       {status === "ASSIGNED" && (
         <Button
-          className="w-full"
+          className="w-full max-md:h-12"
           size="lg"
           disabled={pending}
           onClick={() => runAction(() => startWork(defectId))}
@@ -170,7 +185,7 @@ export function CompletionPanel({
             </p>
           )}
           <Button
-            className="w-full"
+            className="w-full max-md:h-12"
             size="lg"
             disabled={pending}
             onClick={() => runAction(() => markCompleted(defectId))}
@@ -180,7 +195,7 @@ export function CompletionPanel({
             ) : (
               <CheckCircle2 className="h-4 w-4" />
             )}
-            Mark Completed
+            {completeLabel}
           </Button>
         </div>
       )}
@@ -197,6 +212,7 @@ export function CompletionPanel({
           needed.
         </p>
       )}
+      </div>
     </div>
   );
 }
