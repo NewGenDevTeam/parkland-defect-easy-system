@@ -157,6 +157,7 @@ export function MultiPhotoInput({
   onAddFiles,
   onRemove,
   maxFiles = MAX_FILES_PER_UPLOAD,
+  previewOnly = false,
   cameraInputRef,
   className,
   videoSlot,
@@ -166,6 +167,12 @@ export function MultiPhotoInput({
   onAddFiles: (list: FileList | null) => void;
   onRemove: (id: string) => void;
   maxFiles?: number;
+  /**
+   * Hides the internal Take/Choose photo buttons, keeping only the thumbnail
+   * grid, selected count and per-photo remove X. Used by the Add Defect form,
+   * which adds media through its own Choose Media Type steps instead.
+   */
+  previewOnly?: boolean;
   /**
    * Optional externally-mounted camera input (must be rendered by the parent
    * with capture="environment" and wired to onAddFiles). Used by the Add
@@ -251,144 +258,146 @@ export function MultiPhotoInput({
         </>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        {videoActions ? (
-          isCoarse ? (
-            <>
-              {/* Combined mobile UI: two equal-width buttons on one row. */}
-              <Button
-                type="button"
-                variant={sheet === "camera" ? "default" : "outline"}
-                size="sm"
-                className="h-11 flex-1"
-                onClick={() =>
-                  setSheet((s) => (s === "camera" ? null : "camera"))
-                }
-              >
-                <Camera className="h-4 w-4" />
-                Camera
-              </Button>
-              <Button
-                type="button"
-                variant={sheet === "gallery" ? "default" : "outline"}
-                size="sm"
-                className="h-11 flex-1"
-                onClick={() =>
-                  setSheet((s) => (s === "gallery" ? null : "gallery"))
-                }
-              >
-                <Images className="h-4 w-4" />
-                Gallery
-              </Button>
-              {/* Action sheet: an attached panel (not a nested dialog, which
-                  is fragile inside the Add Defect modal). It only picks which
-                  NATIVE input to open — no in-browser camera, no attempt to
-                  alter the phone's native camera UI. */}
-              {sheet === "camera" && (
-                <div className="grid w-full gap-1 rounded-lg border bg-popover p-1">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="h-11 justify-start"
-                    disabled={full}
-                    onClick={() =>
-                      pickFromSheet(() => cameraRef.current?.click())
-                    }
-                  >
-                    <Camera className="h-4 w-4" />
-                    Take Photo
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="h-11 justify-start"
-                    onClick={() => pickFromSheet(videoActions.recordVideo)}
-                  >
-                    <Video className="h-4 w-4" />
-                    Record Video
-                  </Button>
-                </div>
-              )}
-              {sheet === "gallery" && (
-                <div className="grid w-full gap-1 rounded-lg border bg-popover p-1">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="h-11 justify-start"
-                    disabled={full}
-                    onClick={() =>
-                      pickFromSheet(() => galleryRef.current?.click())
-                    }
-                  >
-                    <ImagePlus className="h-4 w-4" />
-                    Choose Photos
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="h-11 justify-start"
-                    onClick={() => pickFromSheet(videoActions.chooseVideo)}
-                  >
-                    <Video className="h-4 w-4" />
-                    Choose Video
-                  </Button>
-                </div>
-              )}
-            </>
+      {!previewOnly && (
+        <div className="flex flex-wrap gap-2">
+          {videoActions ? (
+            isCoarse ? (
+              <>
+                {/* Combined mobile UI: two equal-width buttons on one row. */}
+                <Button
+                  type="button"
+                  variant={sheet === "camera" ? "default" : "outline"}
+                  size="sm"
+                  className="h-11 flex-1"
+                  onClick={() =>
+                    setSheet((s) => (s === "camera" ? null : "camera"))
+                  }
+                >
+                  <Camera className="h-4 w-4" />
+                  Camera
+                </Button>
+                <Button
+                  type="button"
+                  variant={sheet === "gallery" ? "default" : "outline"}
+                  size="sm"
+                  className="h-11 flex-1"
+                  onClick={() =>
+                    setSheet((s) => (s === "gallery" ? null : "gallery"))
+                  }
+                >
+                  <Images className="h-4 w-4" />
+                  Gallery
+                </Button>
+                {/* Action sheet: an attached panel (not a nested dialog, which
+                    is fragile inside the Add Defect modal). It only picks which
+                    NATIVE input to open — no in-browser camera, no attempt to
+                    alter the phone's native camera UI. */}
+                {sheet === "camera" && (
+                  <div className="grid w-full gap-1 rounded-lg border bg-popover p-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-11 justify-start"
+                      disabled={full}
+                      onClick={() =>
+                        pickFromSheet(() => cameraRef.current?.click())
+                      }
+                    >
+                      <Camera className="h-4 w-4" />
+                      Take Photo
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-11 justify-start"
+                      onClick={() => pickFromSheet(videoActions.recordVideo)}
+                    >
+                      <Video className="h-4 w-4" />
+                      Record Video
+                    </Button>
+                  </div>
+                )}
+                {sheet === "gallery" && (
+                  <div className="grid w-full gap-1 rounded-lg border bg-popover p-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-11 justify-start"
+                      disabled={full}
+                      onClick={() =>
+                        pickFromSheet(() => galleryRef.current?.click())
+                      }
+                    >
+                      <ImagePlus className="h-4 w-4" />
+                      Choose Photos
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-11 justify-start"
+                      onClick={() => pickFromSheet(videoActions.chooseVideo)}
+                    >
+                      <Video className="h-4 w-4" />
+                      Choose Video
+                    </Button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                {/* Desktop: direct pickers, no sheets. */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={full}
+                  onClick={() => galleryRef.current?.click()}
+                >
+                  <ImagePlus className="h-4 w-4" />
+                  {items.length > 0 ? "Choose More Photos" : "Choose Photos"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={videoActions.chooseVideo}
+                >
+                  <Video className="h-4 w-4" />
+                  Choose Video
+                </Button>
+              </>
+            )
           ) : (
             <>
-              {/* Desktop: direct pickers, no sheets. */}
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={full}
-                onClick={() => galleryRef.current?.click()}
-              >
-                <ImagePlus className="h-4 w-4" />
-                {items.length > 0 ? "Choose More Photos" : "Choose Photos"}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={videoActions.chooseVideo}
-              >
-                <Video className="h-4 w-4" />
-                Choose Video
-              </Button>
-            </>
-          )
-        ) : (
-          <>
-            {isCoarse && (
+              {isCoarse && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="max-md:h-11 max-md:px-3"
+                  disabled={full}
+                  onClick={() => cameraRef.current?.click()}
+                >
+                  <Camera className="h-4 w-4" />
+                  {items.length > 0 ? "Take Another Photo" : "Take Photo"}
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 className="max-md:h-11 max-md:px-3"
                 disabled={full}
-                onClick={() => cameraRef.current?.click()}
+                onClick={() => galleryRef.current?.click()}
               >
-                <Camera className="h-4 w-4" />
-                {items.length > 0 ? "Take Another Photo" : "Take Photo"}
+                <ImagePlus className="h-4 w-4" />
+                {items.length > 0 ? "Choose More Photos" : "Choose Photos"}
               </Button>
-            )}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="max-md:h-11 max-md:px-3"
-              disabled={full}
-              onClick={() => galleryRef.current?.click()}
-            >
-              <ImagePlus className="h-4 w-4" />
-              {items.length > 0 ? "Choose More Photos" : "Choose Photos"}
-            </Button>
-          </>
-        )}
-        {videoSlot}
-      </div>
+            </>
+          )}
+          {videoSlot}
+        </div>
+      )}
 
       {/* Hidden inputs. No `name`: files travel via FormData.append("photos")
           on explicit save only. Camera captures one photo per launch (no

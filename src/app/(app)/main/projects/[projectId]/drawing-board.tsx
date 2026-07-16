@@ -318,8 +318,8 @@ function Board({
     setMode("view");
   }
 
-  // Closing the Add Defect dialog (Cancel / backdrop / after save) removes
-  // the temporary pin and any captured-but-unsaved photos.
+  // Closing the Add Defect dialog (X / Cancel / after save) removes the
+  // temporary pin and any captured-but-unsaved photos.
   function closeCreate() {
     setCreatePos(null);
     createPhotos.clearFiles();
@@ -663,6 +663,11 @@ function Board({
       <Dialog
         open={createPos !== null}
         onOpenChange={(o) => !o && closeCreate()}
+        // This dialog opens during the floor plan's pointerup: on Android the
+        // same tap's trailing click can land on the just-mounted backdrop and
+        // instantly dismiss it as an outside-press. Pointer dismissal is
+        // disabled — the X button and Cancel remain the ways to close.
+        disablePointerDismissal
       >
         <DialogContent className="max-h-[85dvh] overflow-y-auto max-sm:top-auto max-sm:bottom-0 max-sm:left-0 max-sm:max-w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-b-none">
           <DialogHeader>
@@ -849,9 +854,10 @@ function Board({
                 ))}
               </select>
             </div>
-            {/* Selected media preview. Photos keep the existing multi-photo
-                UI (thumbnails, remove, append more); a selected video shows
-                its filename chip. Media was picked in steps 1–2 — the
+            {/* Selected media preview. Photos show thumbnails + remove only
+                (previewOnly): more media is added via the button below, which
+                reuses the Choose Media Type steps. A selected video shows its
+                filename chip. Media was picked in steps 1–2 — the
                 board-mounted hidden inputs feed the same state. */}
             {(mediaType === "photo" || createPhotos.items.length > 0) && (
               <MultiPhotoInput
@@ -859,6 +865,7 @@ function Board({
                 onAddFiles={createPhotos.addFiles}
                 onRemove={createPhotos.removeFile}
                 cameraInputRef={cameraInputRef}
+                previewOnly
               />
             )}
             {(mediaType === "video" || createVideo !== null) && (
@@ -870,17 +877,21 @@ function Board({
                 disabled={pending}
               />
             )}
-            <button
+            {/* Back to the Choose Media Type step. Selected media and all
+                form fields stay in state, so everything is preserved: new
+                photos append, a new video replaces the current one. */}
+            <Button
               type="button"
+              variant="outline"
+              className="min-h-11 w-full sm:w-auto"
               onClick={() => {
                 setError(null);
                 setCreateStep("media-type");
               }}
-              className="flex min-h-9 items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
             >
-              <ChevronLeft className="h-4 w-4" />
-              Change Media
-            </button>
+              <ImagePlus className="h-4 w-4" />
+              Add More Photos / Video
+            </Button>
             <button
               type="button"
               onClick={() => setShowNote((v) => !v)}

@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ["192.168.100.12"],
+  allowedDevOrigins: ["192.168.68.114"],
   experimental: {
     // Server Actions default to a 1MB request-body limit. Multi-photo uploads
     // allow up to 5 images × 8MB each, capped at 25MB total per submission
