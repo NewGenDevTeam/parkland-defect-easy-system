@@ -36,6 +36,7 @@ import {
 import { FloorPlanViewer } from "@/components/floor-plan-viewer";
 import { ShortVideoInput, VideoPicker } from "@/components/short-video-input";
 import { checkVideoFile, VIDEO_ACCEPT } from "@/lib/video-limits";
+import { formatMalaysiaDate } from "@/lib/format-date";
 import {
   checkImageFile,
   checkTotalUploadSize,
@@ -931,7 +932,7 @@ function Board({
                   #{selected.pinNumber} {selected.title}
                 </DialogTitle>
                 <DialogDescription>
-                  Created {new Date(selected.createdAt).toLocaleDateString()}
+                  Created {formatMalaysiaDate(selected.createdAt)}
                 </DialogDescription>
               </DialogHeader>
 

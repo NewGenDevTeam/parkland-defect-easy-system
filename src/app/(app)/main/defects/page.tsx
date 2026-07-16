@@ -6,6 +6,7 @@ import { DefectStatus } from "@/generated/prisma/enums";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { formatMalaysiaDate } from "@/lib/format-date";
 import {
   STATUS_LABEL,
   PRIORITY_LABEL,
@@ -129,7 +130,7 @@ export default async function MainDefectsPage({
                         ? `Assigned to ${d.assignedTo.name} (${d.assignedTo.email})`
                         : "Not assigned yet"}
                       {" · Created "}
-                      {d.createdAt.toLocaleDateString()}
+                      {formatMalaysiaDate(d.createdAt)}
                     </p>
                   </div>
                   <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />

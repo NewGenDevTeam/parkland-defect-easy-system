@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { formatMalaysiaDateTime } from "@/lib/format-date";
 
 export type GridPhoto = {
   id: string;
@@ -49,7 +50,7 @@ export function PhotoGrid({ photos }: { photos: GridPhoto[] }) {
           />
           {v.createdAt && (
             <p className="text-xs text-muted-foreground">
-              Video · {new Date(v.createdAt).toLocaleString()}
+              Video · {formatMalaysiaDateTime(v.createdAt)}
             </p>
           )}
         </div>

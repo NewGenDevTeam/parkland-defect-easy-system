@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -49,12 +48,17 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full">
-        <Script
+      <head>
+        {/* Raw inline <script> (NOT next/script): it must run before first
+            paint, and React never executes <script> tags rendered inside
+            components on the client — rendering it in <head> keeps it a plain
+            SSR script and silences that dev error. */}
+        <script
           id="theme-init"
-          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }}
         />
+      </head>
+      <body className="min-h-full">
         <ThemeProvider>
           {children}
           <Toaster richColors position="top-center" />

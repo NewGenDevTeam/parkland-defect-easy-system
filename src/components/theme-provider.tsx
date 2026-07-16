@@ -15,8 +15,8 @@ import {
  * next-themes injects its init <script> from inside a Client Component, which
  * Next 16.2 / React 19 rejects ("Encountered a script tag while rendering a
  * React component"). Here the provider only manages state and DOM classes;
- * the pre-hydration init script lives in src/app/layout.tsx (next/script,
- * beforeInteractive) so there is no flash of the wrong theme.
+ * the pre-hydration init script lives in src/app/layout.tsx (a raw inline
+ * <script> in <head>) so there is no flash of the wrong theme.
  *
  * Keep STORAGE_KEY in sync with the inline script in layout.tsx.
  */

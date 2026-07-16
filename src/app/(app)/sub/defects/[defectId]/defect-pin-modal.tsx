@@ -21,6 +21,7 @@ import {
   type DefectStatusValue,
   type PriorityValue,
 } from "@/lib/defect-ui";
+import { formatMalaysiaDate } from "@/lib/format-date";
 import { CompletionPanel } from "./completion-panel";
 
 export type ModalDefect = {
@@ -91,7 +92,7 @@ export function DefectPinModal({
           <DialogHeader>
             <DialogTitle>{defect.title}</DialogTitle>
             <DialogDescription>
-              Created {new Date(defect.createdAt).toLocaleDateString()}
+              Created {formatMalaysiaDate(defect.createdAt)}
             </DialogDescription>
           </DialogHeader>
 

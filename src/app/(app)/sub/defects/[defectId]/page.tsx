@@ -14,6 +14,7 @@ import {
   type DefectStatusValue,
   type PriorityValue,
 } from "@/lib/defect-ui";
+import { formatMalaysiaDate } from "@/lib/format-date";
 import { CompletionPanel } from "./completion-panel";
 import { DefectPinModal } from "./defect-pin-modal";
 
@@ -172,7 +173,7 @@ export default async function SubDefectDetailPage({
       </Card>
 
       <p className="text-xs text-muted-foreground">
-        Created {defect.createdAt.toLocaleDateString()}
+        Created {formatMalaysiaDate(defect.createdAt)}
       </p>
     </div>
   );
