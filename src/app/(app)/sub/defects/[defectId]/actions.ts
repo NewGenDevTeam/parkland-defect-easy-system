@@ -89,8 +89,10 @@ export async function markCompleted(
   ) {
     return { error: "This defect cannot be marked completed right now." };
   }
+  // COMPLETION Photo rows include media = VIDEO, so one photo OR one video
+  // (or both) satisfies the evidence requirement.
   if (defect.photos.length === 0) {
-    return { error: "Upload at least one completion photo first." };
+    return { error: "Upload at least one completion photo or video first." };
   }
 
   await prisma.defect.update({

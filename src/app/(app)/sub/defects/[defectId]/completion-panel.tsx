@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, CheckCircle2, Loader2, Play } from "lucide-react";
+import { CheckCircle2, Loader2, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   MultiPhotoInput,
@@ -10,25 +10,19 @@ import {
   usePhotoFiles,
 } from "@/components/photo-file-input";
 import { PhotoGrid, type GridPhoto } from "@/components/photo-grid";
-import { ShortVideoInput } from "@/components/short-video-input";
-import {
-  checkTotalUploadSize,
-  NO_FILES_ERROR,
-  UPLOAD_HELP_TEXT,
-} from "@/lib/upload-limits";
-import {
-  STATUS_LABEL,
-  type DefectStatusValue,
-} from "@/lib/defect-ui";
-import {
-  uploadCompletionPhoto,
-  startWork,
-  markCompleted,
-} from "./actions";
+import { VideoPicker, uploadDefectVideo } from "@/components/short-video-input";
+import { checkTotalUploadSize, UPLOAD_HELP_TEXT } from "@/lib/upload-limits";
+import { STATUS_LABEL, type DefectStatusValue } from "@/lib/defect-ui";
+import { uploadCompletionPhoto, startWork, markCompleted } from "./actions";
+
+const NO_EVIDENCE_ERROR =
+  "Upload at least one completion photo or video first.";
 
 /**
- * Sub-con completion workflow: upload proof photos (with mobile camera capture)
- * and move the defect through Start Work -> Mark Completed.
+ * Sub-con completion workflow, one-tap style: Start Work, then just select
+ * completion photos/videos and tap the single primary button — it uploads all
+ * pending media (existing uploadCompletionPhoto action + video API) and only
+ * then calls the existing markCompleted action. No separate upload buttons.
  */
 export function CompletionPanel({
   defectId,
@@ -52,37 +46,21 @@ export function CompletionPanel({
   // capture, gallery can add several at once. Client-side type/size/limit
   // checks live in the hook; the server re-validates authoritatively.
   const photos = usePhotoFiles({ onError: setError });
+  // Pending completion video (at most one). Uploaded by the Done tap, never
+  // by a separate button. VideoPicker validates each pick.
+  const [video, setVideo] = useState<File | null>(null);
   // Parent-owned refs for the hidden video inputs, clicked from the combined
   // Camera/Gallery action sheets in MultiPhotoInput.
   const videoCamRef = useRef<HTMLInputElement>(null);
   const videoGalRef = useRef<HTMLInputElement>(null);
-
-  function submitPhotos(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (pending) return;
-    if (photos.items.length === 0) {
-      setError(NO_FILES_ERROR);
-      return;
-    }
-    const totalErr = checkTotalUploadSize(photos.items.map((it) => it.file));
-    if (totalErr) {
-      setError(totalErr);
-      return;
-    }
-    const fd = new FormData();
-    appendPhotos(fd, photos.items);
-    fd.set("defectId", defectId);
-    setError(null);
-    startTransition(async () => {
-      const res = await uploadCompletionPhoto(fd);
-      // Upload failed: keep the selected files so the sub-con can retry.
-      if (res.error) setError(res.error);
-      else {
-        photos.clearFiles();
-        router.refresh();
-      }
-    });
-  }
+  // Synchronous duplicate-submit guard: useTransition's `pending` only turns
+  // true on the next render, so a rapid double-tap would pass a pending-only
+  // check and upload/complete twice.
+  const submittingRef = useRef(false);
+  // What the Done tap is currently doing, for the button label.
+  const [phase, setPhase] = useState<"idle" | "uploading" | "completing">(
+    "idle",
+  );
 
   function runAction(fn: () => Promise<{ error?: string }>) {
     setError(null);
@@ -93,24 +71,91 @@ export function CompletionPanel({
     });
   }
 
+  /**
+   * One-tap complete: upload every pending photo/video first (reusing the
+   * existing action/API), and only when ALL uploads succeeded call the
+   * existing markCompleted action. Pending state is cleared per successful
+   * step, so a retry after a failure never re-uploads saved evidence.
+   */
+  function handleDone() {
+    if (pending || submittingRef.current) return;
+    // Valid evidence = already-saved completion media OR a pending selection.
+    if (completionPhotos.length === 0 && photos.items.length === 0 && !video) {
+      setError(NO_EVIDENCE_ERROR);
+      return;
+    }
+    const totalErr = checkTotalUploadSize(photos.items.map((it) => it.file));
+    if (totalErr) {
+      setError(totalErr);
+      return;
+    }
+    submittingRef.current = true;
+    setError(null);
+    startTransition(async () => {
+      // On failure after a partial upload, refresh so the evidence that DID
+      // save shows up in the grid (its pending state is already cleared).
+      let uploadedSomething = false;
+      const fail = (msg: string) => {
+        setError(msg);
+        if (uploadedSomething) router.refresh();
+      };
+      try {
+        if (photos.items.length > 0) {
+          setPhase("uploading");
+          const fd = new FormData();
+          appendPhotos(fd, photos.items);
+          fd.set("defectId", defectId);
+          const res = await uploadCompletionPhoto(fd);
+          // Keep the selected files so the sub-con can retry.
+          if (res.error) return fail(res.error);
+          photos.clearFiles();
+          uploadedSomething = true;
+        }
+        if (video) {
+          setPhase("uploading");
+          const res = await uploadDefectVideo(defectId, video);
+          // Keep the selected video so the sub-con can retry.
+          if (res.error) return fail(res.error);
+          setVideo(null);
+          uploadedSomething = true;
+        }
+        setPhase("completing");
+        const res = await markCompleted(defectId);
+        if (res.error) return fail(res.error);
+        router.refresh();
+      } finally {
+        submittingRef.current = false;
+        setPhase("idle");
+      }
+    });
+  }
+
   const isClosed = status === "CLOSED";
-  const canUpload = !isClosed && status !== "COMPLETED";
+  // Evidence selection only after work has started (or on a reopened defect) —
+  // ASSIGNED shows just Start Work; COMPLETED/CLOSED stay read-only.
+  const canUpload = status === "IN_PROGRESS" || status === "REOPENED";
+  const hasEvidence =
+    completionPhotos.length > 0 || photos.items.length > 0 || video !== null;
 
   return (
     <div className="space-y-4">
-      {/* Completion photos */}
+      {/* Completion evidence already saved */}
       <div className="space-y-2">
         {completionPhotos.length > 0 ? (
           <PhotoGrid photos={completionPhotos} />
         ) : (
           <p className="text-sm text-muted-foreground">
-            No Completion Photos yet.
+            No completion photos or videos yet.
           </p>
         )}
 
+        {/* Media selection only — no upload buttons. The fieldset disables
+            Camera/Gallery, previews and remove buttons while Done runs. */}
         {canUpload && (
-          <form onSubmit={submitPhotos} className="flex flex-col gap-2">
-            <p className="text-sm font-medium">Take or upload completion photos</p>
+          <fieldset disabled={pending} className="flex flex-col gap-2">
+            <p className="text-sm font-medium">
+              Take or upload completion photos
+            </p>
             <MultiPhotoInput
               items={photos.items}
               onAddFiles={photos.addFiles}
@@ -120,8 +165,14 @@ export function CompletionPanel({
                 chooseVideo: () => videoGalRef.current?.click(),
               }}
               videoSlot={
-                <ShortVideoInput
-                  defectId={defectId}
+                <VideoPicker
+                  file={video}
+                  onSelect={(f) => {
+                    setError(null);
+                    setVideo(f);
+                  }}
+                  onRemove={() => setVideo(null)}
+                  disabled={pending}
                   externalTriggers={{
                     cameraRef: videoCamRef,
                     galleryRef: videoGalRef,
@@ -130,21 +181,10 @@ export function CompletionPanel({
               }
             />
             <p className="text-xs text-muted-foreground">
-              Take or upload completion photos. {UPLOAD_HELP_TEXT}, up to 5
-              photos per upload.
+              {UPLOAD_HELP_TEXT}, up to 5 photos. Selected media is uploaded
+              when you tap {completeLabel}.
             </p>
-            {photos.items.length > 0 && (
-              <Button type="submit" variant="outline" disabled={pending} className="w-full">
-                {pending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Camera className="h-4 w-4" />
-                )}
-                Upload {photos.items.length} Completion Photo
-                {photos.items.length > 1 ? "s" : ""}
-              </Button>
-            )}
-          </form>
+          </fieldset>
         )}
       </div>
 
@@ -176,26 +216,30 @@ export function CompletionPanel({
         </Button>
       )}
 
-      {(status === "IN_PROGRESS" || status === "REOPENED") && (
+      {canUpload && (
         <div className="space-y-2">
-          {completionPhotos.length === 0 && (
+          {!hasEvidence && (
             <p className="text-xs text-muted-foreground">
-              Upload at least one Completion Photo before marking this Defect
-              completed.
+              Add at least one completion photo or video, then tap{" "}
+              {completeLabel}.
             </p>
           )}
           <Button
             className="w-full max-md:h-12"
             size="lg"
             disabled={pending}
-            onClick={() => runAction(() => markCompleted(defectId))}
+            onClick={handleDone}
           >
             {pending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <CheckCircle2 className="h-4 w-4" />
             )}
-            {completeLabel}
+            {phase === "uploading"
+              ? "Uploading…"
+              : phase === "completing"
+                ? "Completing…"
+                : completeLabel}
           </Button>
         </div>
       )}

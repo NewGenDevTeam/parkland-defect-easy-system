@@ -182,13 +182,53 @@ export function VideoPicker({
 }
 
 /**
- * Short-video upload for EXISTING defects (Main-Con detail dialog, Sub-Con
- * completion panel): VideoPicker plus an immediate upload to
+ * Upload ONE short video for an existing defect to
  * POST /api/defects/<id>/videos — a Route Handler, because a 30MB video must
  * not compete with the Server Action body limit sized for photo batches, and
  * XMLHttpRequest gives real upload progress. The server stores it as a Photo
  * row with media = VIDEO, so it appears with the existing evidence.
  * Uploading never changes the defect status.
+ *
+ * Validates the file first and resolves with {} or { error } — never rejects —
+ * so callers (ShortVideoInput below, the Sub-Con one-tap Done flow) can
+ * simply await it.
+ */
+export function uploadDefectVideo(
+  defectId: string,
+  file: File,
+  onProgress?: (pct: number) => void,
+): Promise<{ error?: string }> {
+  const invalid = checkVideoFile(file);
+  if (invalid) return Promise.resolve({ error: invalid });
+  return new Promise((resolve) => {
+    const fd = new FormData();
+    fd.set("video", file);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `/api/defects/${defectId}/videos`);
+    xhr.responseType = "text";
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) return resolve({});
+      try {
+        const data = JSON.parse(xhr.responseText) as { error?: string };
+        resolve({ error: data.error ?? "Upload failed. Please try again." });
+      } catch {
+        resolve({ error: "Upload failed. Please try again." });
+      }
+    };
+    xhr.onerror = () =>
+      resolve({ error: "Network problem — the video was not uploaded." });
+    xhr.send(fd);
+  });
+}
+
+/**
+ * Short-video upload with its own Upload button (Main-Con detail dialog):
+ * VideoPicker plus an immediate upload via uploadDefectVideo above.
  */
 export function ShortVideoInput({
   defectId,
@@ -210,56 +250,27 @@ export function ShortVideoInput({
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
 
-  function handleUpload() {
+  async function handleUpload() {
     if (uploadingRef.current) return;
     if (!file) {
       setError(NO_VIDEO_ERROR);
-      return;
-    }
-    const invalid = checkVideoFile(file);
-    if (invalid) {
-      setError(invalid);
       return;
     }
     uploadingRef.current = true;
     setUploading(true);
     setProgress(0);
     setError(null);
-
-    const fd = new FormData();
-    fd.set("video", file);
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", `/api/defects/${defectId}/videos`);
-    xhr.responseType = "text";
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) {
-        setProgress(Math.round((e.loaded / e.total) * 100));
-      }
-    };
-    const finish = (err?: string) => {
-      uploadingRef.current = false;
-      setUploading(false);
-      if (err) {
-        // Keep the selected file so the user can retry.
-        setError(err);
-      } else {
-        setFile(null);
-        toast.success("Video uploaded", { duration: 1500 });
-        router.refresh();
-      }
-    };
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) return finish();
-      try {
-        const data = JSON.parse(xhr.responseText) as { error?: string };
-        finish(data.error ?? "Upload failed. Please try again.");
-      } catch {
-        finish("Upload failed. Please try again.");
-      }
-    };
-    xhr.onerror = () =>
-      finish("Network problem — the video was not uploaded.");
-    xhr.send(fd);
+    const res = await uploadDefectVideo(defectId, file, setProgress);
+    uploadingRef.current = false;
+    setUploading(false);
+    if (res.error) {
+      // Keep the selected file so the user can retry.
+      setError(res.error);
+    } else {
+      setFile(null);
+      toast.success("Video uploaded", { duration: 1500 });
+      router.refresh();
+    }
   }
 
   return (
