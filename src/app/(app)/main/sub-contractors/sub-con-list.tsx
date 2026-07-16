@@ -109,7 +109,7 @@ export function SubConList({ subCons }: { subCons: SubConRow[] }) {
         </Button>
       </div>
 
-      {error && !dialog && <p className="text-sm text-destructive">{error}</p>}
+      {error && !dialog && <p className="text-sm text-destructive animate-in fade-in-0 duration-300">{error}</p>}
 
       {subCons.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-10 text-center">
@@ -248,7 +248,7 @@ export function SubConList({ subCons }: { subCons: SubConRow[] }) {
               <Label htmlFor="sc-phone">Phone</Label>
               <Input id="sc-phone" name="phone" placeholder="Optional" />
             </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && <p className="text-sm text-destructive animate-in fade-in-0 duration-300">{error}</p>}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={closeDialog}>
                 Cancel
@@ -299,7 +299,7 @@ export function SubConList({ subCons }: { subCons: SubConRow[] }) {
                   <Label htmlFor="se-phone">Phone</Label>
                   <Input id="se-phone" name="phone" defaultValue={editing.phone ?? ""} />
                 </div>
-                {error && <p className="text-sm text-destructive">{error}</p>}
+                {error && <p className="text-sm text-destructive animate-in fade-in-0 duration-300">{error}</p>}
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={closeDialog}>
                     Cancel
@@ -354,7 +354,7 @@ export function SubConList({ subCons }: { subCons: SubConRow[] }) {
                     minLength={8}
                   />
                 </div>
-                {error && <p className="text-sm text-destructive">{error}</p>}
+                {error && <p className="text-sm text-destructive animate-in fade-in-0 duration-300">{error}</p>}
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={closeDialog}>
                     Cancel

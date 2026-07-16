@@ -127,7 +127,7 @@ export function DefectTypeList({
         </Button>
       </div>
 
-      {error && !dialog && <p className="text-sm text-destructive">{error}</p>}
+      {error && !dialog && <p className="text-sm text-destructive animate-in fade-in-0 duration-300">{error}</p>}
 
       <Card>
         <CardContent className="divide-y p-0">
@@ -260,7 +260,7 @@ export function DefectTypeList({
                     ))}
                   </select>
                 </div>
-                {error && <p className="text-sm text-destructive">{error}</p>}
+                {error && <p className="text-sm text-destructive animate-in fade-in-0 duration-300">{error}</p>}
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={closeDialog}>
                     Cancel

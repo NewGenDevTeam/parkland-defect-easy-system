@@ -192,7 +192,7 @@ function UploadDrawing({ projectId }: { projectId: string }) {
         />
         <p className="text-xs text-muted-foreground">{UPLOAD_HELP_TEXT}</p>
         {(clientError ?? state.error) && (
-          <p className="text-sm text-destructive">
+          <p className="text-sm text-destructive animate-in fade-in-0 duration-300">
             {clientError ?? state.error}
           </p>
         )}
@@ -680,7 +680,7 @@ function Board({
           {/* Step 1 — Choose Media Type. No form fields yet; the pin position
               (createPos) is untouched by any step change. */}
           {createStep === "media-type" && (
-            <div className="space-y-3">
+            <div className="space-y-3 animate-in fade-in-0 duration-300">
               <p className="text-sm font-medium">Choose Media Type</p>
               <div className="flex gap-3">
                 <Button
@@ -702,7 +702,7 @@ function Board({
                   Video
                 </Button>
               </div>
-              {error && <p className="text-sm text-destructive">{error}</p>}
+              {error && <p className="text-sm text-destructive animate-in fade-in-0 duration-300">{error}</p>}
               {/* Reached via Change Media (media already selected): Back
                   returns to the form without losing anything. Fresh dialog:
                   Cancel closes it (existing behaviour, pin removed). */}
@@ -732,7 +732,7 @@ function Board({
               the form once a pick lands. Take Photo / Record Video are
               mobile-only (coarse pointer). */}
           {createStep === "media-source" && (
-            <div className="space-y-3">
+            <div className="space-y-3 animate-in fade-in-0 duration-300">
               <p className="text-sm font-medium">
                 {mediaType === "photo" ? "Add Photo" : "Add Video"}
               </p>
@@ -785,7 +785,7 @@ function Board({
                   </>
                 )}
               </div>
-              {error && <p className="text-sm text-destructive">{error}</p>}
+              {error && <p className="text-sm text-destructive animate-in fade-in-0 duration-300">{error}</p>}
               <button
                 type="button"
                 onClick={() => {
@@ -802,7 +802,10 @@ function Board({
 
           {/* Step 3 — the existing defect form. */}
           {createStep === "form" && (
-          <form onSubmit={submitCreate} className="space-y-3">
+          <form
+            onSubmit={submitCreate}
+            className="space-y-3 animate-in fade-in-0 duration-300"
+          >
             <div className="space-y-2">
               <Label htmlFor="defectTypeId">Defect *</Label>
               <select
@@ -912,9 +915,10 @@ function Board({
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="Description / note (optional)"
+                className="animate-in fade-in-0 slide-in-from-bottom-[6px] duration-300"
               />
             )}
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && <p className="text-sm text-destructive animate-in fade-in-0 duration-300">{error}</p>}
             <DialogFooter>
               <Button
                 type="submit"
@@ -1106,7 +1110,7 @@ function Board({
                       </select>
                     </div>
                   </div>
-                  {error && <p className="text-sm text-destructive">{error}</p>}
+                  {error && <p className="text-sm text-destructive animate-in fade-in-0 duration-300">{error}</p>}
                   <DialogFooter>
                     <Button
                       type="button"

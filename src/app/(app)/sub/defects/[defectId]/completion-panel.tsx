@@ -152,7 +152,10 @@ export function CompletionPanel({
         {/* Media selection only — no upload buttons. The fieldset disables
             Camera/Gallery, previews and remove buttons while Done runs. */}
         {canUpload && (
-          <fieldset disabled={pending} className="flex flex-col gap-2">
+          <fieldset
+            disabled={pending}
+            className="flex flex-col gap-2 animate-in fade-in-0 slide-in-from-bottom-[6px] duration-300"
+          >
             <p className="text-sm font-medium">
               Take or upload completion photos
             </p>
@@ -188,7 +191,11 @@ export function CompletionPanel({
         )}
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && (
+        <p className="text-sm text-destructive animate-in fade-in-0 duration-300">
+          {error}
+        </p>
+      )}
 
       {/* Workflow buttons. Only one status block renders at a time; inside the
           defect modal the wrapper sticks to the bottom of the scroll area so
@@ -245,13 +252,13 @@ export function CompletionPanel({
       )}
 
       {status === "COMPLETED" && (
-        <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+        <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 animate-in fade-in-0 duration-300 dark:bg-emerald-950 dark:text-emerald-300">
           Marked as completed. Waiting for the Main-Con to review.
         </p>
       )}
 
       {isClosed && (
-        <p className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
+        <p className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground animate-in fade-in-0 duration-300">
           This defect has been closed ({STATUS_LABEL.CLOSED}). No further action
           needed.
         </p>

@@ -112,7 +112,7 @@ export function AddLayoutDialog({
                 </span>
               )}
             </label>
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && <p className="text-sm text-destructive animate-in fade-in-0 duration-300">{error}</p>}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={close}>
                 Cancel

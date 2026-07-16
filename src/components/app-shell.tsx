@@ -128,6 +128,27 @@ function stepSwipe(
     : "track";
 }
 
+/** How long the drawer's fade-out runs before the element unmounts. */
+const DRAWER_EXIT_MS = 250;
+
+/**
+ * Presence for the conditionally-rendered drawer: keeps it mounted for `ms`
+ * after `open` turns false so the fade-out animation can finish before the
+ * element is removed from the DOM.
+ */
+function useExitPresence(open: boolean, ms: number) {
+  const [present, setPresent] = useState(open);
+  // Render-time state adjustment (react.dev/learn/you-might-not-need-an-effect)
+  // so reopening during the exit window cancels the pending unmount cleanly.
+  if (open && !present) setPresent(true);
+  useEffect(() => {
+    if (open) return;
+    const t = setTimeout(() => setPresent(false), ms);
+    return () => clearTimeout(t);
+  }, [open, ms]);
+  return open || present;
+}
+
 function initials(name: string) {
   return name
     .split(" ")
@@ -146,6 +167,10 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Drawer stays mounted through its fade-out; `drawerClosing` drives the
+  // animate-out classes during that window.
+  const drawerMounted = useExitPresence(mobileOpen, DRAWER_EXIT_MS);
+  const drawerClosing = drawerMounted && !mobileOpen;
   const items = NAV[user.role];
 
   // Close the drawer on any route change (covers back/forward navigation, not
@@ -325,24 +350,42 @@ export function AppShell({
           aria-label="Open navigation"
           data-nav-swipe-handle="true"
           onClick={() => setMobileOpen(true)}
-          className="fixed top-1/2 left-0 z-30 flex h-14 w-6 -translate-y-1/2 items-center justify-center rounded-r-lg border border-l-0 bg-background/80 text-muted-foreground shadow-sm backdrop-blur after:absolute after:-inset-y-3 after:left-0 after:-right-5 after:content-[''] md:hidden"
+          className="fixed top-1/2 left-0 z-30 flex h-14 w-6 -translate-y-1/2 items-center justify-center rounded-r-lg border border-l-0 bg-background/80 text-muted-foreground shadow-sm backdrop-blur animate-in fade-in-0 duration-300 after:absolute after:-inset-y-3 after:left-0 after:-right-5 after:content-[''] md:hidden"
         >
           <ChevronRight className="h-4 w-4" />
         </button>
       )}
 
       {/* Mobile drawer */}
-      {mobileOpen && (
-        <div ref={drawerRef} className="fixed inset-0 z-40 md:hidden">
+      {drawerMounted && (
+        <div
+          ref={drawerRef}
+          className={cn(
+            "fixed inset-0 z-40 md:hidden",
+            drawerClosing && "pointer-events-none",
+          )}
+        >
           {/* Real <button> instead of a div: iOS Safari does not reliably
               deliver delegated click events for non-interactive elements. */}
           <button
             type="button"
             aria-label="Close menu"
-            className="absolute inset-0 h-full w-full cursor-default bg-black/50"
+            className={cn(
+              "absolute inset-0 h-full w-full cursor-default bg-black/50",
+              drawerClosing
+                ? "animate-out fade-out-0 duration-250 fill-mode-forwards"
+                : "animate-in fade-in-0 duration-300",
+            )}
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="absolute left-0 top-0 flex h-full w-64 flex-col overflow-y-auto border-r bg-background">
+          <aside
+            className={cn(
+              "absolute left-0 top-0 flex h-full w-64 flex-col overflow-y-auto border-r bg-background",
+              drawerClosing
+                ? "animate-out fade-out-0 slide-out-to-left-2 duration-250 fill-mode-forwards"
+                : "animate-in fade-in-0 slide-in-from-left-2 duration-300",
+            )}
+          >
             <div className="flex items-center justify-between pr-2">
               {brand}
               <Button

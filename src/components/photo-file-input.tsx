@@ -293,7 +293,7 @@ export function MultiPhotoInput({
                     NATIVE input to open — no in-browser camera, no attempt to
                     alter the phone's native camera UI. */}
                 {sheet === "camera" && (
-                  <div className="grid w-full gap-1 rounded-lg border bg-popover p-1">
+                  <div className="grid w-full gap-1 rounded-lg border bg-popover p-1 animate-in fade-in-0 zoom-in-98 duration-300">
                     <Button
                       type="button"
                       variant="ghost"
@@ -318,7 +318,7 @@ export function MultiPhotoInput({
                   </div>
                 )}
                 {sheet === "gallery" && (
-                  <div className="grid w-full gap-1 rounded-lg border bg-popover p-1">
+                  <div className="grid w-full gap-1 rounded-lg border bg-popover p-1 animate-in fade-in-0 zoom-in-98 duration-300">
                     <Button
                       type="button"
                       variant="ghost"

@@ -153,7 +153,7 @@ export function VideoPicker({
       {/* Wraps onto its own line inside the flex-wrap button row. */}
       <div className="w-full space-y-2">
         {file && (
-          <div className="flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-2">
+          <div className="flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-2 animate-in fade-in-0 duration-300">
             <Video className="h-4 w-4 shrink-0 text-muted-foreground" />
             <span className="min-w-0 flex-1 truncate text-sm">{file.name}</span>
             <span className="shrink-0 text-xs text-muted-foreground">
@@ -172,7 +172,7 @@ export function VideoPicker({
           </div>
         )}
         {actions}
-        {pickError && <p className="text-sm text-destructive">{pickError}</p>}
+        {pickError && <p className="text-sm text-destructive animate-in fade-in-0 duration-300">{pickError}</p>}
         <p className="text-xs text-muted-foreground">
           {VIDEO_GUIDANCE} (MP4, MOV or WebM, max 30MB).
         </p>
@@ -286,7 +286,7 @@ export function ShortVideoInput({
       actions={
         <>
           {uploading && (
-            <div className="space-y-1">
+            <div className="space-y-1 animate-in fade-in-0 duration-300">
               <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                 <div
                   className="h-full rounded-full bg-primary transition-[width]"
@@ -315,7 +315,7 @@ export function ShortVideoInput({
               {uploading ? "Uploading…" : "Upload Video"}
             </Button>
           )}
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && <p className="text-sm text-destructive animate-in fade-in-0 duration-300">{error}</p>}
         </>
       }
     />

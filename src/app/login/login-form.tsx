@@ -86,7 +86,7 @@ export function LoginForm() {
       {state.error && (
         <p
           role="alert"
-          className="rounded-xl border border-red-300/25 bg-red-400/10 px-3 py-2.5 text-sm text-red-200"
+          className="rounded-xl border border-red-300/25 bg-red-400/10 px-3 py-2.5 text-sm text-red-200 animate-in fade-in-0 duration-300"
         >
           {state.error}
         </p>

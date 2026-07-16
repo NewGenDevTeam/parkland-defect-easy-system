@@ -64,7 +64,10 @@ export function CreateProjectDialog() {
           </div>
 
           {state.error && (
-            <p className="text-sm text-destructive" role="alert">
+            <p
+              className="text-sm text-destructive animate-in fade-in-0 duration-300"
+              role="alert"
+            >
               {state.error}
             </p>
           )}
